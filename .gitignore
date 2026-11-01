@@ -1,0 +1,41 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# Node / frontend
+node_modules/
+web/dist/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.eslintcache
+
+# Gradle / Android
+.gradle/
+**/build/
+local.properties
+.kotlin/
+captures/
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# Compiled native libraries copied into the Android app
+android/app/src/main/jniLibs/**/*.so
+android/android/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment / secrets
+.env
+.env.*

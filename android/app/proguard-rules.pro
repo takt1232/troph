@@ -1,0 +1,3 @@
+-keep class com.sixdaggers.pocketfiles.ServerBridge { *; }
+-keep class com.sixdaggers.pocketfiles.ThumbnailBridge { *; }
+-keep class com.sixdaggers.pocketfiles.MediaScannerBridge { *; }

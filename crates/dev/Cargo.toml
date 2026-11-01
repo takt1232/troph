@@ -1,0 +1,11 @@
+[package]
+name = "pocketfiles-dev"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+env_logger = "0.11"
+log.workspace = true
+pocketfiles-core = { path = "../core", features = ["dev-thumbs"] }
+serde_json.workspace = true

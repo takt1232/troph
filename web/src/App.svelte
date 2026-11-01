@@ -1,0 +1,692 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import {
+    ApiError,
+    deleteItems,
+    downloadUrl,
+    downloadZip,
+    loadListing,
+    loadMe,
+    loadRootsListing,
+    login,
+    logout,
+    makeFolder,
+    rawUrl,
+    renameItem,
+    ROOTS_PATH,
+    transferItems,
+    uploadFile,
+  } from './lib/api';
+  import type { Entry, Listing, Me, UploadTask } from './lib/types';
+  import Icon from './lib/Icon.svelte';
+  import Login from './lib/Login.svelte';
+  import EntryCard from './lib/EntryCard.svelte';
+  import EntryRow from './lib/EntryRow.svelte';
+  import TextPrompt from './lib/TextPrompt.svelte';
+  import ConfirmDialog from './lib/ConfirmDialog.svelte';
+  import Picker from './lib/Picker.svelte';
+  import UploadPanel from './lib/UploadPanel.svelte';
+
+  let me = $state<Me | null>(null);
+  let listing = $state<Listing | null>(null);
+  let loading = $state(true);
+  let loadingListing = $state(false);
+  let loginError = $state('');
+  let submittingLogin = $state(false);
+  let toast = $state('');
+  let toastError = $state(false);
+  let toastTimer: number | undefined;
+  let selected = $state<string[]>([]);
+  let view = $state<'grid' | 'list'>('grid');
+  let showNewFolder = $state(false);
+  let renameTarget = $state<Entry | null>(null);
+  let showDelete = $state(false);
+  let transfer = $state<{ op: 'move' | 'copy'; paths: string[] } | null>(null);
+  let uploads = $state<UploadTask[]>([]);
+  let uploadQueue: { id: string; file: File; name: string }[] = [];
+  let uploading = false;
+  let dragActive = $state(false);
+  let fileInput: HTMLInputElement | undefined = $state();
+  let folderInput: HTMLInputElement | undefined = $state();
+
+  let isFileRoot = $derived(listing?.is_file_root === true);
+  let isVirtualRoot = $derived(listing?.is_virtual_root === true);
+  let canBrowse = $derived(listing !== null && !isFileRoot && !isVirtualRoot);
+  let selectedEntries = $derived(
+    listing ? listing.entries.filter((entry) => selected.includes(entry.path)) : [],
+  );
+  let selectableEntries = $derived(
+    listing && !listing.is_file_root && !listing.is_virtual_root
+      ? listing.entries.filter((entry) => !entry.restricted)
+      : [],
+  );
+  let allSelected = $derived(
+    selectableEntries.length > 0 && selectableEntries.every((entry) => selected.includes(entry.path)),
+  );
+  let crumbs = $derived.by(() => {
+    if (!listing || !me) return [] as { name: string; path: string }[];
+    if (listing.is_virtual_root) {
+      return [{ name: listing.name, path: ROOTS_PATH }];
+    }
+    const root =
+      me.roots.find((candidate) => isUnder(listing!.path, candidate.path)) ?? me.roots[0];
+    if (!root) return [];
+    const base = root.path.endsWith('/') ? root.path.slice(0, -1) : root.path;
+    const relative = listing.path.slice(base.length).split('/').filter(Boolean);
+    const result = [] as { name: string; path: string }[];
+    if (me.roots.length > 1) {
+      result.push({ name: 'Shared items', path: ROOTS_PATH });
+    }
+    result.push({ name: root.label, path: root.path });
+    let accumulator = base;
+    for (const segment of relative) {
+      accumulator = `${accumulator}/${segment}`;
+      result.push({ name: segment, path: accumulator });
+    }
+    return result;
+  });
+
+  onMount(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('error') === 'pin') {
+      loginError = 'Incorrect PIN. Try again.';
+    } else if (params.get('error') === 'rate') {
+      loginError = 'Too many attempts. Wait a minute.';
+    }
+    const savedView = localStorage.getItem('pf-view');
+    if (savedView === 'grid' || savedView === 'list') {
+      view = savedView;
+    }
+    void bootstrap();
+    const onPopState = () => {
+      const path = pathFromHash();
+      if (path && me && me.roots.length > 0 && path !== listing?.path) {
+        void navigate(path, false);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  });
+
+  async function bootstrap() {
+    loading = true;
+    try {
+      me = await loadMe();
+      await openInitialListing();
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        me = null;
+      } else {
+        showToast(errorMessage(error, 'Cannot reach the server'), true);
+      }
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function openInitialListing() {
+    if (!me || me.roots.length === 0) {
+      listing = null;
+      selected = [];
+      history.replaceState(null, '', location.pathname);
+      return;
+    }
+    const hash = pathFromHash();
+    const candidates = [
+      ...(hash && (hash !== ROOTS_PATH || me.roots.length > 1) ? [hash] : []),
+      ...(me.roots.length > 1 ? [ROOTS_PATH] : []),
+      ...me.roots.map((root) => root.path),
+    ].filter((candidate): candidate is string => Boolean(candidate));
+    for (const candidate of [...new Set(candidates)]) {
+      await navigate(candidate, false);
+      if (listing) break;
+    }
+    if (listing) {
+      history.replaceState(null, '', `#path=${encodeURIComponent(listing.path)}`);
+    } else {
+      history.replaceState(null, '', location.pathname);
+    }
+  }
+
+  function pathFromHash(): string | null {
+    const hash = location.hash.replace(/^#/, '');
+    if (!hash.startsWith('path=')) return null;
+    try {
+      return decodeURIComponent(hash.slice(5));
+    } catch {
+      return null;
+    }
+  }
+
+  function isUnder(path: string, root: string): boolean {
+    return path === root || path.startsWith(root.endsWith('/') ? root : `${root}/`);
+  }
+
+  async function handleLogin(pin: string) {
+    submittingLogin = true;
+    loginError = '';
+    try {
+      me = await login(pin);
+      await openInitialListing();
+    } catch (error) {
+      loginError = errorMessage(error, 'Login failed');
+      throw error;
+    } finally {
+      submittingLogin = false;
+    }
+  }
+
+  async function navigate(path: string, push = true) {
+    if (!me || me.roots.length === 0) return;
+    loadingListing = true;
+    try {
+      const data = path === ROOTS_PATH ? await loadRootsListing() : await loadListing(path);
+      listing = data;
+      selected = [];
+      if (push) {
+        history.pushState(null, '', `#path=${encodeURIComponent(path)}`);
+      }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        me = null;
+        loginError = 'Your session expired. Sign in again.';
+      } else {
+        showToast(errorMessage(error, 'Cannot open folder'), true);
+      }
+    } finally {
+      loadingListing = false;
+    }
+  }
+
+  async function refresh() {
+    if (listing) {
+      const current = listing.path;
+      await navigate(current, false);
+    }
+  }
+
+  async function reload() {
+    try {
+      me = await loadMe();
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        me = null;
+        loginError = 'Your session expired. Sign in again.';
+      } else {
+        showToast(errorMessage(error, 'Cannot reach the server'), true);
+      }
+      return;
+    }
+    if (!me || me.roots.length === 0) {
+      listing = null;
+      selected = [];
+      history.replaceState(null, '', location.pathname);
+      return;
+    }
+    const current = listing?.path ?? pathFromHash();
+    if (current && current !== ROOTS_PATH) {
+      await navigate(current, false);
+      if (listing) return;
+    }
+    await openInitialListing();
+  }
+
+  function openEntry(entry: Entry) {
+    if (entry.restricted) {
+      showToast('Android/data and Android/obb are not accessible on Android 11+', true);
+      return;
+    }
+    if (entry.is_dir) {
+      void navigate(entry.path);
+    } else {
+      window.open(rawUrl(entry.path), '_blank', 'noopener');
+    }
+  }
+
+  function toggleEntry(entry: Entry) {
+    if (!listing || listing.is_file_root || listing.is_virtual_root) return;
+    if (entry.restricted) {
+      showToast('This folder is restricted by Android', true);
+      return;
+    }
+    if (selected.includes(entry.path)) {
+      selected = selected.filter((path) => path !== entry.path);
+    } else {
+      selected = [...selected, entry.path];
+    }
+  }
+
+  function toggleAll() {
+    if (!listing || listing.is_file_root || listing.is_virtual_root) return;
+    if (allSelected) {
+      selected = [];
+    } else {
+      selected = selectableEntries.map((entry) => entry.path);
+    }
+  }
+
+  function setView(next: 'grid' | 'list') {
+    view = next;
+    localStorage.setItem('pf-view', next);
+  }
+
+  async function handleLogout() {
+    try {
+      await logout();
+    } catch {
+      // The local session is dropped regardless.
+    }
+    me = null;
+    listing = null;
+    selected = [];
+    uploads = [];
+    history.replaceState(null, '', location.pathname);
+  }
+
+  async function createFolder(name: string) {
+    if (!listing) return;
+    try {
+      await makeFolder(listing.path, name);
+      showToast('Folder created');
+      await refresh();
+    } catch (error) {
+      throw new Error(errorMessage(error, 'Cannot create folder'));
+    }
+  }
+
+  async function renameItemNow(name: string) {
+    if (!renameTarget) return;
+    try {
+      await renameItem(renameTarget.path, name);
+      showToast('Renamed');
+      await refresh();
+    } catch (error) {
+      throw new Error(errorMessage(error, 'Cannot rename'));
+    }
+  }
+
+  async function deleteSelected() {
+    try {
+      const result = await deleteItems(selected);
+      if (result.errors?.length) {
+        showToast(result.errors[0], true);
+      } else {
+        showToast(`Deleted ${selected.length} item${selected.length === 1 ? '' : 's'}`);
+      }
+      selected = [];
+      await refresh();
+    } catch (error) {
+      throw new Error(errorMessage(error, 'Cannot delete'));
+    }
+  }
+
+  async function transferSelected(destination: string) {
+    if (!transfer) return;
+    try {
+      const result = await transferItems(transfer.op, transfer.paths, destination);
+      if (result.errors?.length) {
+        showToast(result.errors[0], true);
+      } else {
+        showToast(`${transfer.op === 'move' ? 'Moved' : 'Copied'} ${result.paths?.length ?? transfer.paths.length} item(s)`);
+      }
+      selected = [];
+      await refresh();
+    } catch (error) {
+      throw new Error(errorMessage(error, transfer.op === 'move' ? 'Cannot move' : 'Cannot copy'));
+    }
+  }
+
+  function downloadSelected() {
+    if (!listing || listing.is_file_root || listing.is_virtual_root || selected.length === 0) return;
+    downloadZip(listing.path, selected);
+    showToast('Building ZIP archive…');
+  }
+
+  function downloadSelectedFiles() {
+    if (selectedEntries.length === 1) {
+      const entry = selectedEntries[0];
+      const anchor = document.createElement('a');
+      anchor.href = downloadUrl(entry.path);
+      anchor.download = entry.name;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    }
+  }
+
+  function chooseFiles() {
+    fileInput?.click();
+  }
+
+  function chooseFolder() {
+    folderInput?.click();
+  }
+
+  function onFileInput(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    if (input.files) enqueueFiles(input.files);
+    input.value = '';
+  }
+
+  function enqueueFiles(files: FileList | File[]) {
+    if (!listing || listing.is_file_root || listing.is_virtual_root) return;
+    const items = Array.from(files).map((file) => {
+      const withPath = file as File & { webkitRelativePath?: string };
+      return { file, name: withPath.webkitRelativePath || file.name };
+    });
+    for (const item of items) {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      uploads = [
+        ...uploads,
+        {
+          id,
+          name: item.name,
+          loaded: 0,
+          total: item.file.size,
+          status: 'queued',
+        },
+      ];
+      uploadQueue.push({ id, file: item.file, name: item.name });
+    }
+    if (items.length > 0) {
+      void processUploads();
+    }
+  }
+
+  async function processUploads() {
+    if (uploading || !listing) return;
+    uploading = true;
+    const destination = listing.path;
+    try {
+      while (uploadQueue.length > 0) {
+        const item = uploadQueue.shift()!;
+        patchUpload(item.id, { status: 'uploading' });
+        try {
+          await uploadFile(item.file, item.name, destination, (loaded, total) => {
+            patchUpload(item.id, { loaded, total });
+          });
+          patchUpload(item.id, { status: 'done', loaded: item.file.size, total: item.file.size });
+        } catch (error) {
+          patchUpload(item.id, { status: 'error', message: errorMessage(error, 'Upload failed') });
+          if (error instanceof ApiError && error.status === 401) {
+            me = null;
+            loginError = 'Your session expired. Sign in again.';
+          }
+        }
+      }
+      showToast('Uploads finished');
+      if (listing?.path === destination) {
+        await refresh();
+      }
+    } finally {
+      uploading = false;
+      if (listing && me) {
+        void refresh();
+      }
+    }
+  }
+
+  function patchUpload(id: string, patch: Partial<UploadTask>) {
+    uploads = uploads.map((task) => (task.id === id ? { ...task, ...patch } : task));
+  }
+
+  function onDrop(event: DragEvent) {
+    event.preventDefault();
+    dragActive = false;
+    if (event.dataTransfer?.files.length) {
+      enqueueFiles(event.dataTransfer.files);
+    }
+  }
+
+  function errorMessage(error: unknown, fallback: string): string {
+    if (error instanceof ApiError) return error.message;
+    if (error instanceof Error && error.message) return error.message;
+    return fallback;
+  }
+
+  function showToast(message: string, isError = false) {
+    toast = message;
+    toastError = isError;
+    if (toastTimer) window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => {
+      toast = '';
+    }, 4000);
+  }
+
+</script>
+
+<svelte:head>
+  <title>{listing ? `${listing.name} · Troph` : 'Troph'}</title>
+</svelte:head>
+
+{#if loading}
+  <div class="loading-screen"><span class="spinner"></span> Loading Troph…</div>
+{:else if !me}
+  <Login onSubmit={handleLogin} error={loginError} busy={submittingLogin} />
+{:else}
+  <div
+    class="app"
+    class:drop-active={dragActive}
+    role="presentation"
+    ondragover={(event) => {
+      event.preventDefault();
+      dragActive = true;
+    }}
+    ondragleave={(event) => {
+      if (event.target === event.currentTarget) dragActive = false;
+    }}
+    ondrop={onDrop}
+  >
+    <header class="topbar">
+      <div class="topbar-row">
+        <div class="brand"><Icon name="server" size={23} /><span>Troph</span></div>
+        <span class="spacer"></span>
+        <button class="icon-button" onclick={reload} aria-label="Refresh" title="Refresh">
+          <Icon name="refresh" size={20} />
+        </button>
+        <button class="icon-button" onclick={handleLogout} aria-label="Log out" title="Log out">
+          <Icon name="logout" size={20} />
+        </button>
+      </div>
+      <div class="toolbar">
+        <div class="breadcrumbs">
+          {#each crumbs as crumb, index (crumb.path)}
+            {#if index > 0}<span class="crumb-sep">/</span>{/if}
+            <button
+              class="crumb"
+              class:current={index === crumbs.length - 1}
+              onclick={() => void navigate(crumb.path)}
+              title={crumb.name}
+            >{crumb.name}</button>
+          {/each}
+        </div>
+        <button class="button small ghost" onclick={toggleAll} disabled={selectableEntries.length === 0}>
+          <Icon name="check" size={15} /> {allSelected ? 'Clear' : 'Select all'}
+        </button>
+        <button
+          class="button small"
+          onclick={() => (showNewFolder = true)}
+          aria-label="New folder"
+          title="New folder"
+          disabled={!canBrowse}
+        >
+          <Icon name="folder-plus" size={16} /> <span class="desktop-only">New folder</span>
+        </button>
+        <button class="button small primary" onclick={chooseFiles} disabled={!canBrowse}>
+          <Icon name="upload" size={16} /> Upload
+        </button>
+        <button class="button small" onclick={chooseFolder} title="Upload a folder" disabled={!canBrowse}>
+          <Icon name="folder" size={16} /> <span class="desktop-only">Folder</span>
+        </button>
+        <button
+          class="icon-button"
+          onclick={() => setView(view === 'grid' ? 'list' : 'grid')}
+          aria-label="Toggle view"
+          title="Toggle view"
+        >
+          <Icon name={view === 'grid' ? 'list' : 'grid'} size={20} />
+        </button>
+      </div>
+    </header>
+
+    <main class="content">
+      {#if !listing}
+        {#if me.roots.length === 0}
+          <div class="empty">
+            <strong>Nothing is shared yet</strong>
+            <p>On your phone, open Troph and choose folders or files to share, then restart the server.</p>
+            <button class="button small" onclick={reload}>Refresh</button>
+          </div>
+        {:else if loadingListing}
+          <div class="empty"><span class="spinner"></span></div>
+        {:else}
+          <div class="empty">
+            <strong>Cannot open shared items</strong>
+            <p>The shared folders or files may have moved or been removed. Check the sharing settings on your phone.</p>
+            <button class="button small" onclick={reload}>Refresh</button>
+          </div>
+        {/if}
+      {:else if listing.entries.length === 0}
+        <div class="empty">
+          <strong>This folder is empty</strong>
+          Upload files or create a folder to get started.
+        </div>
+      {:else if view === 'grid'}
+        <div class="file-grid">
+          {#each listing.entries as entry (entry.path)}
+            <EntryCard
+              {entry}
+              selected={selected.includes(entry.path)}
+              selectable={!isFileRoot}
+              onToggle={() => toggleEntry(entry)}
+              onOpen={openEntry}
+              onRestricted={() => showToast('This folder is restricted by Android', true)}
+            />
+          {/each}
+        </div>
+      {:else}
+        <div class="list">
+          {#each listing.entries as entry (entry.path)}
+            <EntryRow
+              {entry}
+              selected={selected.includes(entry.path)}
+              selectable={!isFileRoot}
+              onToggle={() => toggleEntry(entry)}
+              onOpen={openEntry}
+              onRestricted={() => showToast('This folder is restricted by Android', true)}
+            />
+          {/each}
+        </div>
+      {/if}
+    </main>
+
+    {#if selected.length > 0 && !isFileRoot && !isVirtualRoot}
+      <div class="selection-bar">
+        <span class="selection-count">{selected.length} selected</span>
+        <button class="button small" onclick={downloadSelected} title="Download as ZIP">
+          <Icon name="download" size={15} /> ZIP
+        </button>
+        {#if selectedEntries.length === 1 && !selectedEntries[0].is_dir}
+          <button class="button small ghost" onclick={downloadSelectedFiles} title="Download file">
+            <Icon name="download" size={15} /> File
+          </button>
+        {/if}
+        <button
+          class="button small ghost"
+          onclick={() => (transfer = { op: 'move', paths: [...selected] })}
+          title="Move"
+        >
+          <Icon name="move" size={15} /> Move
+        </button>
+        <button
+          class="button small ghost"
+          onclick={() => (transfer = { op: 'copy', paths: [...selected] })}
+          title="Copy"
+        >
+          <Icon name="copy" size={15} /> Copy
+        </button>
+        {#if selectedEntries.length === 1}
+          <button class="button small ghost" onclick={() => (renameTarget = selectedEntries[0])} title="Rename">
+            Rename
+          </button>
+        {/if}
+        <button class="button small danger" onclick={() => (showDelete = true)} title="Delete">
+          <Icon name="trash" size={15} /> Delete
+        </button>
+        <button class="icon-button" onclick={() => (selected = [])} aria-label="Clear selection">
+          <Icon name="close" size={17} />
+        </button>
+      </div>
+    {/if}
+
+    <footer class="footer">
+      {me.device_name} · {me.hostname} · v{me.version}
+    </footer>
+
+    <input
+      bind:this={fileInput}
+      type="file"
+      multiple
+      class="sr-only"
+      onchange={onFileInput}
+      tabindex="-1"
+    />
+    <input
+      bind:this={folderInput}
+      type="file"
+      multiple
+      webkitdirectory
+      class="sr-only"
+      onchange={onFileInput}
+      tabindex="-1"
+    />
+
+    {#if showNewFolder}
+      <TextPrompt
+        title="New folder"
+        label="Folder name"
+        confirmText="Create"
+        onSubmit={createFolder}
+        onClose={() => (showNewFolder = false)}
+      />
+    {/if}
+
+    {#if renameTarget}
+      <TextPrompt
+        title="Rename"
+        label={renameTarget.name}
+        initial={renameTarget.name}
+        confirmText="Rename"
+        onSubmit={renameItemNow}
+        onClose={() => (renameTarget = null)}
+      />
+    {/if}
+
+    {#if showDelete}
+      <ConfirmDialog
+        title="Delete items?"
+        message={`Permanently delete ${selected.length} selected item${selected.length === 1 ? '' : 's'}? This cannot be undone.`}
+        confirmText="Delete"
+        danger
+        onConfirm={deleteSelected}
+        onClose={() => (showDelete = false)}
+      />
+    {/if}
+
+    {#if transfer}
+      <Picker
+        title={transfer.op === 'move' ? 'Move to folder' : 'Copy to folder'}
+        confirmText={transfer.op === 'move' ? 'Move here' : 'Copy here'}
+        startPath={listing?.path || transfer.paths[0]}
+        onConfirm={transferSelected}
+        onClose={() => (transfer = null)}
+      />
+    {/if}
+
+    <UploadPanel tasks={uploads} onDismiss={() => (uploads = [])} />
+
+    {#if toast}
+      <div class="toast" class:error={toastError}>{toast}</div>
+    {/if}
+  </div>
+{/if}

@@ -1,0 +1,39 @@
+[package]
+name = "pocketfiles-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+dev-thumbs = ["dep:image"]
+
+[dependencies]
+axum.workspace = true
+bytes.workspace = true
+chrono.workspace = true
+form_urlencoded.workspace = true
+futures-util.workspace = true
+hex.workspace = true
+httpdate.workspace = true
+if-addrs.workspace = true
+log.workspace = true
+mdns-sd.workspace = true
+mime_guess.workspace = true
+percent-encoding.workspace = true
+rand.workspace = true
+rust-embed.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+subtle.workspace = true
+time.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tower-http.workspace = true
+uuid.workspace = true
+zip.workspace = true
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"], optional = true }
+
+[dev-dependencies]
+tempfile = "3"
