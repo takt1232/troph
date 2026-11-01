@@ -59,14 +59,13 @@
     </button>
   {/if}
   <div class="row-thumb">
-    <Icon name={iconFor(entry)} size={23} />
+    <Icon name={iconFor(entry)} size={22} />
     {#if entry.has_thumb && !entry.restricted}
       <img
         src={thumbUrl(entry.path, 160)}
         alt=""
         loading="lazy"
         decoding="async"
-        style="position:absolute;inset:0"
         onerror={(event) => (event.currentTarget as HTMLImageElement).remove()}
       />
     {/if}
@@ -77,7 +76,7 @@
       {entry.restricted ? 'Restricted' : `${kindLabel(entry)}${entry.is_dir ? '' : ` · ${formatSize(entry.size)}`}`}
     </div>
   </div>
-  <div class="row-sub desktop-only" style="flex:0 0 86px;text-align:right">
+  <div class="row-date desktop-only">
     {formatDate(entry.modified)}
   </div>
 </div>

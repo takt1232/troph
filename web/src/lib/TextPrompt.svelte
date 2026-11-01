@@ -70,7 +70,7 @@
     <h2>{title}</h2>
     <p class="sub">{label}</p>
     <input bind:this={input} bind:value={value} class="text-input" autocomplete="off" />
-    {#if error}<p class="login-error" style="text-align:left">{error}</p>{/if}
+    {#if error}<p class="form-error">{error}</p>{/if}
     <div class="modal-actions">
       <button class="button ghost" type="button" onclick={onClose} disabled={busy}>Cancel</button>
       <button class="button primary" type="submit" disabled={busy}>

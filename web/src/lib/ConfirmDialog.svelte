@@ -49,7 +49,7 @@
   <div class="modal" role="dialog" aria-modal="true" aria-label={title}>
     <h2>{title}</h2>
     <p class="sub">{message}</p>
-    {#if error}<p class="login-error" style="text-align:left">{error}</p>{/if}
+    {#if error}<p class="form-error">{error}</p>{/if}
     <div class="modal-actions">
       <button class="button ghost" onclick={onClose} disabled={busy}>Cancel</button>
       <button class="button {danger ? 'danger' : 'primary'}" onclick={() => void confirm()} disabled={busy}>

@@ -82,7 +82,7 @@
         {/if}
         {#each listing.entries.filter((entry) => entry.is_dir && !entry.restricted) as entry (entry.path)}
           <button class="picker-item" onclick={() => void navigate(entry.path)}>
-            <Icon name="folder" size={18} /> <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{entry.name}</span>
+            <Icon name="folder" size={18} /> <span class="picker-name">{entry.name}</span>
           </button>
         {/each}
         {#if listing.entries.filter((entry) => entry.is_dir && !entry.restricted).length === 0}
@@ -92,7 +92,7 @@
         <div class="picker-empty">{error || 'Cannot open folder'}</div>
       {/if}
     </div>
-    {#if error && listing}<p class="login-error" style="text-align:left">{error}</p>{/if}
+    {#if error && listing}<p class="form-error">{error}</p>{/if}
     <div class="modal-actions">
       <button class="button ghost" onclick={onClose} disabled={busy}>Cancel</button>
       <button class="button primary" onclick={() => void confirm()} disabled={busy || !listing}>

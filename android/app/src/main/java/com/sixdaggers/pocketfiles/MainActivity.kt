@@ -6,11 +6,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -35,22 +32,20 @@ import java.io.File
 class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var statusView: TextView
+    private lateinit var statusDot: View
     private lateinit var errorView: TextView
     private lateinit var urlView: TextView
     private lateinit var pinView: TextView
     private lateinit var hostnameView: TextView
     private lateinit var qrView: ImageView
-    private lateinit var startButton: Button
-    private lateinit var stopButton: Button
+    private lateinit var serverButton: Button
     private lateinit var copyUrlButton: Button
     private lateinit var copyPinButton: Button
     private lateinit var openButton: Button
-    private lateinit var filesPermissionButton: Button
-    private lateinit var notificationPermissionButton: Button
-    private lateinit var batteryButton: Button
+    private lateinit var filesRow: SettingRow
+    private lateinit var notificationRow: SettingRow
     private lateinit var sharingSummaryView: TextView
-    private lateinit var manageSharingButton: Button
-    private lateinit var credentialsCard: LinearLayout
+    private lateinit var credentialsGroup: LinearLayout
     private var lastQrText: String? = null
 
     private val ticker = object : Runnable {
@@ -64,16 +59,6 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.setDecorFitsSystemWindows(false)
         setContentView(buildContent())
-        if (Build.VERSION.SDK_INT >= 30) {
-            window.insetsController?.setSystemBarsAppearance(
-                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                    android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
-                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                    android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
-            )
-        }
-        window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = Color.TRANSPARENT
         updateUi()
     }
 
@@ -90,12 +75,13 @@ class MainActivity : Activity() {
 
     private fun buildContent(): View {
         val root = ScrollView(this).apply {
-            setBackgroundColor(Color.rgb(246, 247, 249))
+            setBackgroundColor(TrophTheme.BG)
             isFillViewport = true
+            isVerticalScrollBarEnabled = false
         }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(20), dp(20), dp(28))
+            setPadding(dp(20), dp(24), dp(20), dp(32))
         }
         root.addView(content)
         root.setOnApplyWindowInsetsListener { view, insets ->
@@ -104,126 +90,167 @@ class MainActivity : Activity() {
             insets
         }
 
-        content.addView(text("Troph", 30f, Color.rgb(17, 24, 39), bold = true))
+        content.addView(label("Troph", 28f, TrophTheme.TEXT, bold = true))
         content.addView(
-            text(
-                "Your phone's files, in your computer's browser.",
-                15f,
-                Color.rgb(75, 85, 99),
-            ).apply { setPadding(0, dp(4), 0, dp(18)) },
+            label("Your phone's files, in your computer's browser.", 14f, TrophTheme.MUTED)
+                .apply { setPadding(0, dp(4), 0, dp(20)) },
         )
 
-        val statusCard = card()
-        statusView = text("Server stopped", 18f, Color.rgb(17, 24, 39), bold = true)
-        statusCard.addView(statusView)
-        errorView = text("", 14f, Color.rgb(185, 28, 28)).apply {
-            setPadding(0, dp(6), 0, 0)
+        val serverPanel = panel()
+        val statusRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        statusDot = View(this).apply {
+            background = dot(TrophTheme.MUTED)
+            layoutParams = LinearLayout.LayoutParams(dp(8), dp(8)).apply { marginEnd = dp(10) }
+        }
+        statusRow.addView(statusDot)
+        statusView = label("Server stopped", 18f, TrophTheme.TEXT, bold = true)
+        statusRow.addView(statusView)
+        serverPanel.addView(statusRow)
+
+        errorView = label("", 13f, TrophTheme.DANGER).apply {
+            setPadding(0, dp(8), 0, 0)
             visibility = View.GONE
         }
-        statusCard.addView(errorView)
+        serverPanel.addView(errorView)
 
-        val buttonRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(14), 0, 0)
-        }
-        startButton = button("Start server").apply {
-            setOnClickListener { startServer() }
-        }
-        stopButton = button("Stop").apply {
-            setOnClickListener { stopServer() }
-        }
-        buttonRow.addView(startButton, rowParams())
-        buttonRow.addView(stopButton, rowParams())
-        statusCard.addView(buttonRow)
-        content.addView(statusCard)
-
-        val sharingCard = card()
-        sharingCard.addView(text("Shared items", 18f, Color.rgb(17, 24, 39), bold = true))
-        sharingSummaryView = text("", 14f, Color.rgb(75, 85, 99)).apply {
-            setPadding(0, dp(6), 0, 0)
-        }
-        sharingCard.addView(sharingSummaryView)
-        manageSharingButton = wideButton("Manage shared items") { openSharing() }
-        sharingCard.addView(manageSharingButton)
-        sharingCard.addView(
-            text(
-                "Only the folders and files you choose are visible to the browser. Changes restart the server automatically and keep the same PIN.",
-                12f,
-                Color.rgb(107, 114, 128),
-            ).apply { setPadding(0, dp(8), 0, 0) },
+        serverButton = primaryButton("Start server") { startServer() }
+        serverPanel.addView(
+            serverButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(16) },
         )
-        content.addView(sharingCard)
 
-        credentialsCard = card().apply { visibility = View.GONE }
-        credentialsCard.addView(text("Open this address on your computer", 13f, Color.rgb(75, 85, 99)))
-        urlView = text("", 17f, Color.rgb(37, 99, 235), mono = true).apply {
-            setTextIsSelectable(true)
-            setPadding(0, dp(4), 0, dp(10))
+        credentialsGroup = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
         }
-        credentialsCard.addView(urlView)
-        hostnameView = text("", 13f, Color.rgb(107, 114, 128), mono = true).apply {
+        credentialsGroup.addView(rule(18, 0))
+        credentialsGroup.addView(
+            label("Open this address on your computer", 13f, TrophTheme.MUTED)
+                .apply { setPadding(0, dp(16), 0, 0) },
+        )
+        urlView = label("", 17f, TrophTheme.ACCENT, mono = true).apply {
+            setTextIsSelectable(true)
+            setPadding(0, dp(4), 0, dp(6))
+        }
+        credentialsGroup.addView(urlView)
+        hostnameView = label("", 12f, TrophTheme.MUTED, mono = true).apply {
             setTextIsSelectable(true)
         }
-        credentialsCard.addView(hostnameView)
+        credentialsGroup.addView(hostnameView)
 
-        credentialsCard.addView(
-            text("PIN", 13f, Color.rgb(75, 85, 99)).apply { setPadding(0, dp(14), 0, 0) },
+        credentialsGroup.addView(
+            label("PIN", 13f, TrophTheme.MUTED).apply { setPadding(0, dp(16), 0, 0) },
         )
-        pinView = text("", 34f, Color.rgb(17, 24, 39), bold = true, mono = true).apply {
+        pinView = label("", 32f, TrophTheme.TEXT, bold = true, mono = true).apply {
             setTextIsSelectable(true)
             letterSpacing = 0.12f
         }
-        credentialsCard.addView(pinView)
+        credentialsGroup.addView(pinView)
 
-        val credentialsButtons = LinearLayout(this).apply {
+        val credentialButtons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(10), 0, dp(14))
+            setPadding(0, dp(12), 0, 0)
         }
-        copyUrlButton = button("Copy address").apply { setOnClickListener { copy(urlView.text.toString(), "Address") } }
-        copyPinButton = button("Copy PIN").apply { setOnClickListener { copy(pinView.text.toString(), "PIN") } }
-        credentialsButtons.addView(copyUrlButton, rowParams())
-        credentialsButtons.addView(copyPinButton, rowParams())
-        credentialsCard.addView(credentialsButtons)
+        copyUrlButton = smallButton("Copy address") { copy(urlView.text.toString(), "Address") }
+        copyPinButton = smallButton("Copy PIN") { copy(pinView.text.toString(), "PIN") }
+        credentialButtons.addView(copyUrlButton, rowParams())
+        credentialButtons.addView(copyPinButton, rowParams().apply { marginEnd = 0 })
+        credentialsGroup.addView(credentialButtons)
 
         qrView = ImageView(this).apply {
             adjustViewBounds = true
             setBackgroundColor(Color.WHITE)
             setPadding(dp(8), dp(8), dp(8), dp(8))
         }
-        val qrParams = LinearLayout.LayoutParams(dp(220), dp(220)).apply {
-            gravity = Gravity.CENTER_HORIZONTAL
-            bottomMargin = dp(12)
-        }
-        credentialsCard.addView(qrView, qrParams)
-        openButton = button("Open in this phone's browser").apply {
-            setOnClickListener { openUrl() }
-        }
-        credentialsCard.addView(openButton)
-        content.addView(credentialsCard)
-
-        val permissionCard = card()
-        permissionCard.addView(text("Permissions", 18f, Color.rgb(17, 24, 39), bold = true))
-        permissionCard.addView(
-            text(
-                "All files access is required to read the folders and files you share. The notification and battery opt-out keep transfers alive while the screen is off.",
-                13f,
-                Color.rgb(75, 85, 99),
-            ).apply { setPadding(0, dp(4), 0, dp(10)) },
+        credentialsGroup.addView(
+            qrView,
+            LinearLayout.LayoutParams(dp(180), dp(180)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                topMargin = dp(16)
+            },
         )
-        filesPermissionButton = wideButton("All files access") { openAllFilesSettings() }
-        permissionCard.addView(filesPermissionButton)
-        notificationPermissionButton = wideButton("Notification permission") { requestNotificationPermission() }
-        permissionCard.addView(notificationPermissionButton)
-        batteryButton = wideButton("Battery optimization settings") { openBatterySettings() }
-        permissionCard.addView(batteryButton)
-        content.addView(permissionCard)
+        openButton = secondaryButton("Open in this phone's browser") { openUrl() }
+        credentialsGroup.addView(
+            openButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(14) },
+        )
+        serverPanel.addView(credentialsGroup)
+        content.addView(serverPanel)
 
         content.addView(
-            text(
+            sectionTitle("Setup"),
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(26) },
+        )
+        content.addView(
+            label(
+                "All files access is required to read the folders and files you share. The notification and battery opt-out keep transfers alive while the screen is off.",
+                13f,
+                TrophTheme.MUTED,
+            ).apply { setPadding(0, dp(6), 0, dp(6)) },
+        )
+        val setupPanel = panel()
+        filesRow = SettingRow(this, "All files access")
+        setupPanel.addView(filesRow)
+        setupPanel.addView(rule())
+        notificationRow = SettingRow(this, "Notifications")
+        setupPanel.addView(notificationRow)
+        setupPanel.addView(rule())
+        setupPanel.addView(
+            SettingRow(this, "Battery optimization").apply {
+                action("Open settings") { openBatterySettings() }
+            },
+        )
+        content.addView(setupPanel)
+
+        content.addView(
+            sectionTitle("Shared items"),
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(26) },
+        )
+        sharingSummaryView = label("", 14f, TrophTheme.MUTED).apply { setPadding(0, dp(6), 0, 0) }
+        content.addView(sharingSummaryView)
+        content.addView(
+            secondaryButton("Manage shared items") { openSharing() },
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(12) },
+        )
+        content.addView(
+            label(
+                "Only the folders and files you choose are visible to the browser. Changes restart the server automatically and keep the same PIN.",
+                12f,
+                TrophTheme.MUTED,
+            ).apply { setPadding(0, dp(10), 0, 0) },
+        )
+
+        content.addView(rule(28, 0))
+        content.addView(
+            label(
                 "The server is available only on your local network and is protected by a PIN. Keep the phone connected to Wi-Fi.",
                 12f,
-                Color.rgb(107, 114, 128),
-            ).apply { setPadding(dp(4), dp(16), dp(4), 0) },
+                TrophTheme.MUTED,
+            ).apply { setPadding(0, dp(16), 0, 0) },
+        )
+        content.addView(
+            label("Troph v${BuildConfig.VERSION_NAME}", 12f, TrophTheme.MUTED).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                setPadding(0, dp(20), 0, dp(4))
+            },
         )
 
         return root
@@ -236,28 +263,38 @@ class MainActivity : Activity() {
         when {
             starting -> {
                 statusView.text = "Starting server\u2026"
-                statusView.setTextColor(Color.rgb(37, 99, 235))
+                statusView.setTextColor(TrophTheme.ACCENT)
+                statusDot.background = dot(TrophTheme.ACCENT)
             }
             running -> {
                 statusView.text = "Server running"
-                statusView.setTextColor(Color.rgb(21, 128, 61))
+                statusView.setTextColor(TrophTheme.ACCENT)
+                statusDot.background = dot(TrophTheme.ACCENT)
             }
             else -> {
                 statusView.text = "Server stopped"
-                statusView.setTextColor(Color.rgb(17, 24, 39))
+                statusView.setTextColor(TrophTheme.TEXT)
+                statusDot.background = dot(TrophTheme.MUTED)
             }
         }
         errorView.visibility = if (!state?.error.isNullOrBlank()) View.VISIBLE else View.GONE
         errorView.text = state?.error.orEmpty()
 
-        startButton.isEnabled = !running && !starting
-        stopButton.isEnabled = running || starting
+        serverButton.text = if (running || starting) "Stop server" else "Start server"
+        serverButton.setOnClickListener {
+            if (ServerService.state?.running == true || ServerService.state?.starting == true) {
+                stopServer()
+            } else {
+                startServer()
+            }
+        }
+
         copyUrlButton.isEnabled = !state?.url.isNullOrBlank()
         copyPinButton.isEnabled = !state?.pin.isNullOrBlank()
         openButton.isEnabled = !state?.url.isNullOrBlank()
 
         if (state?.pin != null || state?.url != null) {
-            credentialsCard.visibility = View.VISIBLE
+            credentialsGroup.visibility = View.VISIBLE
             urlView.text = state?.url ?: ""
             hostnameView.text = state?.hostname?.let { "http://$it:${port()}" } ?: ""
             pinView.text = state?.pin ?: ""
@@ -271,18 +308,24 @@ class MainActivity : Activity() {
                 qrView.setImageBitmap(qrText?.let { makeQr(it) })
             }
         } else {
-            credentialsCard.visibility = View.GONE
+            credentialsGroup.visibility = View.GONE
             lastQrText = null
         }
 
         val allFiles = Environment.isExternalStorageManager()
-        filesPermissionButton.text = if (allFiles) "All files access: granted" else "Grant all files access"
-        filesPermissionButton.isEnabled = !allFiles
+        if (allFiles) {
+            filesRow.granted("Granted")
+        } else {
+            filesRow.action("Allow") { openAllFilesSettings() }
+        }
+
         val notifications = Build.VERSION.SDK_INT < 33 ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        notificationPermissionButton.text =
-            if (notifications) "Notifications: allowed" else "Allow notifications"
-        notificationPermissionButton.isEnabled = !notifications
+        if (notifications) {
+            notificationRow.granted("Allowed")
+        } else {
+            notificationRow.action("Allow") { requestNotificationPermission() }
+        }
         updateSharingSummary()
     }
 
@@ -420,72 +463,6 @@ class MainActivity : Activity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         updateUi()
     }
-
-    private fun text(
-        value: String,
-        size: Float,
-        color: Int,
-        bold: Boolean = false,
-        mono: Boolean = false,
-    ): TextView {
-        return TextView(this).apply {
-            text = value
-            textSize = size
-            setTextColor(color)
-            if (bold) setTypeface(typeface, Typeface.BOLD)
-            if (mono) typeface = Typeface.MONOSPACE
-            setLineSpacing(0f, 1.05f)
-        }
-    }
-
-    private fun card(): LinearLayout {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(16))
-            background = GradientDrawable().apply {
-                setColor(Color.WHITE)
-                cornerRadius = dp(16).toFloat()
-            }
-            elevation = dp(1).toFloat()
-            val params = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            )
-            params.bottomMargin = dp(14)
-            layoutParams = params
-        }
-    }
-
-    private fun button(label: String): Button {
-        return Button(this).apply {
-            text = label
-            textSize = 14f
-            isAllCaps = false
-            minHeight = dp(44)
-            backgroundTintList = ColorStateList.valueOf(Color.rgb(229, 231, 235))
-            setTextColor(Color.rgb(17, 24, 39))
-        }
-    }
-
-    private fun wideButton(label: String, action: () -> Unit): Button {
-        return button(label).apply {
-            setOnClickListener { action() }
-            val params = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            )
-            params.topMargin = dp(6)
-            layoutParams = params
-        }
-    }
-
-    private fun rowParams(): LinearLayout.LayoutParams {
-        return LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-            marginEnd = dp(6)
-        }
-    }
-
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun toast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()

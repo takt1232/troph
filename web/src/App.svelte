@@ -26,11 +26,16 @@
   import ConfirmDialog from './lib/ConfirmDialog.svelte';
   import Picker from './lib/Picker.svelte';
   import UploadPanel from './lib/UploadPanel.svelte';
+  import Menu from './lib/Menu.svelte';
+
+  const appVersion = __APP_VERSION__;
 
   let me = $state<Me | null>(null);
   let listing = $state<Listing | null>(null);
   let loading = $state(true);
   let loadingListing = $state(false);
+  let navId = 0;
+  let navAbort: AbortController | null = null;
   let loginError = $state('');
   let submittingLogin = $state(false);
   let toast = $state('');
@@ -85,6 +90,54 @@
     }
     return result;
   });
+  let menuItems = $derived.by(() => [
+    {
+      label: 'New folder',
+      icon: 'folder-plus',
+      action: () => (showNewFolder = true),
+      disabled: !canBrowse,
+    },
+    {
+      label: 'Upload folder',
+      icon: 'folder',
+      action: chooseFolder,
+      disabled: !canBrowse,
+    },
+    {
+      label: allSelected ? 'Clear selection' : 'Select all',
+      icon: 'check',
+      action: toggleAll,
+      disabled: selectableEntries.length === 0,
+    },
+    {
+      label: view === 'grid' ? 'List view' : 'Grid view',
+      icon: view === 'grid' ? 'list' : 'grid',
+      action: () => setView(view === 'grid' ? 'list' : 'grid'),
+    },
+    { label: 'Refresh', icon: 'refresh', action: reload },
+    { label: 'Sign out', icon: 'logout', action: handleLogout, danger: true },
+  ]);
+  let selectionItems = $derived.by(() => [
+    {
+      label: 'Move to…',
+      icon: 'move',
+      action: () => (transfer = { op: 'move', paths: [...selected] }),
+    },
+    {
+      label: 'Copy to…',
+      icon: 'copy',
+      action: () => (transfer = { op: 'copy', paths: [...selected] }),
+    },
+    ...(selectedEntries.length === 1
+      ? [
+          {
+            label: 'Rename',
+            icon: 'pencil',
+            action: () => (renameTarget = selectedEntries[0]),
+          },
+        ]
+      : []),
+  ]);
 
   onMount(() => {
     const params = new URLSearchParams(location.search);
@@ -178,15 +231,24 @@
 
   async function navigate(path: string, push = true) {
     if (!me || me.roots.length === 0) return;
+    const id = ++navId;
+    navAbort?.abort();
+    const controller = new AbortController();
+    navAbort = controller;
     loadingListing = true;
     try {
-      const data = path === ROOTS_PATH ? await loadRootsListing() : await loadListing(path);
+      const data =
+        path === ROOTS_PATH
+          ? await loadRootsListing(controller.signal)
+          : await loadListing(path, controller.signal);
+      if (id !== navId) return;
       listing = data;
       selected = [];
       if (push) {
         history.pushState(null, '', `#path=${encodeURIComponent(path)}`);
       }
     } catch (error) {
+      if (id !== navId || isAbortError(error)) return;
       if (error instanceof ApiError && error.status === 401) {
         me = null;
         loginError = 'Your session expired. Sign in again.';
@@ -194,7 +256,10 @@
         showToast(errorMessage(error, 'Cannot open folder'), true);
       }
     } finally {
-      loadingListing = false;
+      if (id === navId) {
+        loadingListing = false;
+        navAbort = null;
+      }
     }
   }
 
@@ -338,12 +403,7 @@
 
   function downloadSelected() {
     if (!listing || listing.is_file_root || listing.is_virtual_root || selected.length === 0) return;
-    downloadZip(listing.path, selected);
-    showToast('Building ZIP archive…');
-  }
-
-  function downloadSelectedFiles() {
-    if (selectedEntries.length === 1) {
+    if (selectedEntries.length === 1 && !selectedEntries[0].is_dir) {
       const entry = selectedEntries[0];
       const anchor = document.createElement('a');
       anchor.href = downloadUrl(entry.path);
@@ -351,7 +411,10 @@
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
+      return;
     }
+    downloadZip(listing.path, selected);
+    showToast('Building ZIP archive…');
   }
 
   function chooseFiles() {
@@ -438,6 +501,10 @@
     }
   }
 
+  function isAbortError(error: unknown): boolean {
+    return error instanceof Error && error.name === 'AbortError';
+  }
+
   function errorMessage(error: unknown, fallback: string): string {
     if (error instanceof ApiError) return error.message;
     if (error instanceof Error && error.message) return error.message;
@@ -477,19 +544,16 @@
     }}
     ondrop={onDrop}
   >
-    <header class="topbar">
-      <div class="topbar-row">
-        <div class="brand"><Icon name="server" size={23} /><span>Troph</span></div>
-        <span class="spacer"></span>
-        <button class="icon-button" onclick={reload} aria-label="Refresh" title="Refresh">
-          <Icon name="refresh" size={20} />
-        </button>
-        <button class="icon-button" onclick={handleLogout} aria-label="Log out" title="Log out">
-          <Icon name="logout" size={20} />
-        </button>
+    {#if loadingListing && listing}
+      <div class="loading-bar" role="status" aria-live="polite">
+        <span class="bar-fill"></span>
+        <span class="sr-only">Loading folder…</span>
       </div>
-      <div class="toolbar">
-        <div class="breadcrumbs">
+    {/if}
+    <header class="topbar">
+      <div class="bar">
+        <div class="brand"><Icon name="server" size={22} /><span>Troph</span></div>
+        <nav class="breadcrumbs" aria-label="Breadcrumb">
           {#each crumbs as crumb, index (crumb.path)}
             {#if index > 0}<span class="crumb-sep">/</span>{/if}
             <button
@@ -499,37 +563,17 @@
               title={crumb.name}
             >{crumb.name}</button>
           {/each}
+        </nav>
+        <div class="topbar-actions">
+          <button class="button primary" onclick={chooseFiles} disabled={!canBrowse}>
+            <Icon name="upload" size={16} /> Upload
+          </button>
+          <Menu label="More actions" items={menuItems} />
         </div>
-        <button class="button small ghost" onclick={toggleAll} disabled={selectableEntries.length === 0}>
-          <Icon name="check" size={15} /> {allSelected ? 'Clear' : 'Select all'}
-        </button>
-        <button
-          class="button small"
-          onclick={() => (showNewFolder = true)}
-          aria-label="New folder"
-          title="New folder"
-          disabled={!canBrowse}
-        >
-          <Icon name="folder-plus" size={16} /> <span class="desktop-only">New folder</span>
-        </button>
-        <button class="button small primary" onclick={chooseFiles} disabled={!canBrowse}>
-          <Icon name="upload" size={16} /> Upload
-        </button>
-        <button class="button small" onclick={chooseFolder} title="Upload a folder" disabled={!canBrowse}>
-          <Icon name="folder" size={16} /> <span class="desktop-only">Folder</span>
-        </button>
-        <button
-          class="icon-button"
-          onclick={() => setView(view === 'grid' ? 'list' : 'grid')}
-          aria-label="Toggle view"
-          title="Toggle view"
-        >
-          <Icon name={view === 'grid' ? 'list' : 'grid'} size={20} />
-        </button>
       </div>
     </header>
 
-    <main class="content">
+    <main class="content" class:busy={loadingListing && listing !== null} aria-busy={loadingListing}>
       {#if !listing}
         {#if me.roots.length === 0}
           <div class="empty">
@@ -538,7 +582,7 @@
             <button class="button small" onclick={reload}>Refresh</button>
           </div>
         {:else if loadingListing}
-          <div class="empty"><span class="spinner"></span></div>
+          <div class="empty"><span class="spinner"></span> Loading…</div>
         {:else}
           <div class="empty">
             <strong>Cannot open shared items</strong>
@@ -582,34 +626,11 @@
 
     {#if selected.length > 0 && !isFileRoot && !isVirtualRoot}
       <div class="selection-bar">
-        <span class="selection-count">{selected.length} selected</span>
-        <button class="button small" onclick={downloadSelected} title="Download as ZIP">
-          <Icon name="download" size={15} /> ZIP
+        <span class="selection-count"><strong>{selected.length}</strong> selected</span>
+        <button class="button small" onclick={downloadSelected} title="Download">
+          <Icon name="download" size={15} /> Download
         </button>
-        {#if selectedEntries.length === 1 && !selectedEntries[0].is_dir}
-          <button class="button small ghost" onclick={downloadSelectedFiles} title="Download file">
-            <Icon name="download" size={15} /> File
-          </button>
-        {/if}
-        <button
-          class="button small ghost"
-          onclick={() => (transfer = { op: 'move', paths: [...selected] })}
-          title="Move"
-        >
-          <Icon name="move" size={15} /> Move
-        </button>
-        <button
-          class="button small ghost"
-          onclick={() => (transfer = { op: 'copy', paths: [...selected] })}
-          title="Copy"
-        >
-          <Icon name="copy" size={15} /> Copy
-        </button>
-        {#if selectedEntries.length === 1}
-          <button class="button small ghost" onclick={() => (renameTarget = selectedEntries[0])} title="Rename">
-            Rename
-          </button>
-        {/if}
+        <Menu label="Selection actions" items={selectionItems} up />
         <button class="button small danger" onclick={() => (showDelete = true)} title="Delete">
           <Icon name="trash" size={15} /> Delete
         </button>
@@ -620,7 +641,7 @@
     {/if}
 
     <footer class="footer">
-      {me.device_name} · {me.hostname} · v{me.version}
+      {me.device_name} · {me.hostname} · v{appVersion}
     </footer>
 
     <input

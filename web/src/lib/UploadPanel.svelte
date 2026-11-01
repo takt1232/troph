@@ -27,7 +27,7 @@
           {done.length} upload{done.length === 1 ? '' : 's'} complete
         {/if}
       </span>
-      <button class="icon-button" style="width:28px;height:28px" onclick={onDismiss} aria-label="Dismiss uploads">
+      <button class="icon-button uploads-close" onclick={onDismiss} aria-label="Dismiss uploads">
         <Icon name="close" size={16} />
       </button>
     </div>

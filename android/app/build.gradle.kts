@@ -3,6 +3,11 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val appVersion = rootProject.file("../VERSION").readText().trim()
+val appVersionCode = appVersion
+    .split('.')
+    .fold(0) { acc, part -> acc * 1000 + part.toInt() }
+
 android {
     namespace = "com.sixdaggers.pocketfiles"
     compileSdk = 36
@@ -11,8 +16,8 @@ android {
         applicationId = "com.sixdaggers.pocketfiles"
         minSdk = 30
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = appVersionCode
+        versionName = appVersion
         ndk {
             abiFilters += "arm64-v8a"
         }

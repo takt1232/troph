@@ -70,12 +70,12 @@ export async function loadMe(): Promise<Me> {
   return me;
 }
 
-export async function loadListing(path: string): Promise<Listing> {
-  return request<Listing>(`/api/list?path=${encodeURIComponent(path)}`);
+export async function loadListing(path: string, signal?: AbortSignal): Promise<Listing> {
+  return request<Listing>(`/api/list?path=${encodeURIComponent(path)}`, { signal });
 }
 
-export async function loadRootsListing(): Promise<Listing> {
-  return request<Listing>('/api/list/roots');
+export async function loadRootsListing(signal?: AbortSignal): Promise<Listing> {
+  return request<Listing>('/api/list/roots', { signal });
 }
 
 export function thumbUrl(path: string, size = 320): string {

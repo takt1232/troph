@@ -37,15 +37,15 @@
   }
 </script>
 
-<div class="login-wrap">
+<div class="login">
   <form
-    class="login-card"
+    class="login-form"
     onsubmit={(event) => {
       event.preventDefault();
       void submit();
     }}
   >
-    <div class="login-logo"><Icon name="server" size={34} /></div>
+    <div class="login-mark"><Icon name="server" size={30} /></div>
     <h1>Troph</h1>
     <p>Enter the PIN shown on your phone to open your files.</p>
     <input
@@ -64,7 +64,7 @@
       }}
     />
     <div class="login-error">{localError || error}</div>
-    <button class="button primary" type="submit" disabled={busy} style="width:100%;margin-top:4px">
+    <button class="button primary" type="submit" disabled={busy}>
       {#if busy}<span class="spinner"></span>{:else}<Icon name="lock" size={17} />{/if}
       {busy ? 'Opening…' : 'Unlock'}
     </button>

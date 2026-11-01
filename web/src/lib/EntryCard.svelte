@@ -30,7 +30,7 @@
 </script>
 
 <div
-  class="card"
+  class="tile"
   class:selected
   class:restricted={entry.restricted}
   role="button"
@@ -59,8 +59,8 @@
       {#if selected}<Icon name="check" size={14} />{/if}
     </button>
   {/if}
-  <div class="thumb">
-    <div class="thumb-icon"><Icon name={iconFor(entry)} size={entry.is_dir ? 46 : 38} /></div>
+  <div class="tile-media">
+    <Icon name={iconFor(entry)} size={entry.is_dir ? 42 : 34} />
     {#if entry.has_thumb && !entry.restricted}
       <img
         src={thumbUrl(entry.path, 320)}
@@ -71,11 +71,9 @@
       />
     {/if}
   </div>
-  <div class="card-body">
-    <div class="card-name" title={entry.name}>{entry.name}</div>
-    <div class="card-meta">
-      <span>{entry.is_dir ? 'Folder' : formatSize(entry.size)}</span>
-      <span>{entry.restricted ? 'Restricted' : formatDate(entry.modified)}</span>
-    </div>
+  <div class="tile-name" title={entry.name}>{entry.name}</div>
+  <div class="tile-meta">
+    <span>{entry.is_dir ? 'Folder' : formatSize(entry.size)}</span>
+    <span>{entry.restricted ? 'Restricted' : formatDate(entry.modified)}</span>
   </div>
 </div>

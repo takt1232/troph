@@ -19,7 +19,7 @@ pub use thumbs::cleanup_cache;
 pub use thumbs::ImageThumbnails;
 
 pub const APP_NAME: &str = "Troph";
-pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const APP_VERSION: &str = env!("APP_VERSION");
 pub const DEFAULT_PORT: u16 = 55432;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

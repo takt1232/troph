@@ -97,6 +97,13 @@
     <rect x="3" y="4" width="18" height="7" rx="2" />
     <rect x="3" y="13" width="18" height="7" rx="2" />
     <path d="M7 7.5h.01M7 16.5h.01" />
+  {:else if name === 'more'}
+    <circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none" />
+  {:else if name === 'pencil'}
+    <path d="M4 20h4l10-10a2.8 2.8 0 0 0-4-4L4 16z" />
+    <path d="m13.5 6.5 4 4" />
   {:else}
     <path d="M6 3h8l4 4v14H6zM14 3v5h5" />
   {/if}

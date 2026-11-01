@@ -1064,7 +1064,7 @@ dependencies = [
 
 [[package]]
 name = "pocketfiles-android"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "android_logger",
  "env_logger",
@@ -1076,7 +1076,7 @@ dependencies = [
 
 [[package]]
 name = "pocketfiles-core"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "axum",
  "bytes",
@@ -1108,7 +1108,7 @@ dependencies = [
 
 [[package]]
 name = "pocketfiles-dev"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "env_logger",
  "log",

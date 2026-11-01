@@ -4,9 +4,6 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.res.ColorStateList
-import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -14,11 +11,9 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
-import android.widget.TextView
 import android.widget.Toast
 import java.io.File
 
@@ -28,22 +23,10 @@ class SharingActivity : Activity() {
         private const val REQ_FILES = 101
     }
 
-    private var rendering = false
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setDecorFitsSystemWindows(false)
-        window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = Color.TRANSPARENT
         render()
-        if (Build.VERSION.SDK_INT >= 30) {
-            window.insetsController?.setSystemBarsAppearance(
-                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                    android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
-                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                    android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
-            )
-        }
     }
 
     private fun render() {
@@ -52,12 +35,13 @@ class SharingActivity : Activity() {
 
     private fun buildContent(): View {
         val root = ScrollView(this).apply {
-            setBackgroundColor(Color.rgb(246, 247, 249))
+            setBackgroundColor(TrophTheme.BG)
             isFillViewport = true
+            isVerticalScrollBarEnabled = false
         }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(20), dp(20), dp(28))
+            setPadding(dp(20), dp(24), dp(20), dp(32))
         }
         root.addView(content)
         root.setOnApplyWindowInsetsListener { view, insets ->
@@ -66,25 +50,37 @@ class SharingActivity : Activity() {
             insets
         }
 
-        content.addView(text("Shared items", 30f, Color.rgb(17, 24, 39), bold = true))
+        content.addView(label("Shared items", 28f, TrophTheme.TEXT, bold = true))
         content.addView(
-            text(
+            label(
                 "Choose what Troph makes available to the browser. Nothing is shared by default.",
-                15f,
-                Color.rgb(75, 85, 99),
-            ).apply { setPadding(0, dp(4), 0, dp(18)) },
+                14f,
+                TrophTheme.MUTED,
+            ).apply { setPadding(0, dp(4), 0, dp(20)) },
         )
 
         val mode = ShareStore.mode(this)
-        val modeCard = card()
+        val modePanel = panel()
+        val modeRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        modeRow.addView(
+            label("Share everything", 16f, TrophTheme.TEXT),
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
         val toggle = Switch(this).apply {
-            text = "Share everything"
-            textSize = 16f
-            setTextColor(Color.rgb(17, 24, 39))
             isChecked = mode == ShareStore.Mode.EVERYTHING
+            thumbTintList = ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(TrophTheme.ACCENT, TrophTheme.MUTED),
+            )
+            trackTintList = ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(0x664ADE80, TrophTheme.BORDER_STRONG),
+            )
         }
         toggle.setOnCheckedChangeListener { _, checked ->
-            if (rendering) return@setOnCheckedChangeListener
             val target = if (checked) {
                 ShareStore.Mode.EVERYTHING
             } else {
@@ -98,76 +94,94 @@ class SharingActivity : Activity() {
                 )
             }
         }
-        modeCard.addView(toggle)
-        modeCard.addView(
-            text(
+        modeRow.addView(toggle)
+        modePanel.addView(modeRow)
+        modePanel.addView(
+            label(
                 "Shares internal storage and every SD or USB volume. Android/data and Android/obb are never exposed.",
                 13f,
-                Color.rgb(75, 85, 99),
-            ).apply { setPadding(0, dp(6), 0, 0) },
+                TrophTheme.MUTED,
+            ).apply { setPadding(0, dp(8), 0, 0) },
         )
-        content.addView(modeCard)
+        content.addView(modePanel)
 
-        val itemsCard = card()
-        itemsCard.addView(text("Selected items", 18f, Color.rgb(17, 24, 39), bold = true))
+        content.addView(
+            sectionTitle("Selected items"),
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(26) },
+        )
+
+        val itemsPanel = panel()
+        itemsPanel.setPadding(dp(18), dp(4), dp(18), dp(4))
+        val shares = if (mode == ShareStore.Mode.EVERYTHING) {
+            emptyList()
+        } else {
+            ShareStore.shares(this)
+        }
         if (mode == ShareStore.Mode.EVERYTHING) {
-            itemsCard.addView(
-                text(
+            itemsPanel.addView(
+                label(
                     "All storage is shared. Turn off Share everything to choose individual folders and files.",
                     14f,
-                    Color.rgb(75, 85, 99),
-                ).apply { setPadding(0, dp(8), 0, 0) },
+                    TrophTheme.MUTED,
+                ).apply { setPadding(0, dp(14), 0, dp(14)) },
+            )
+        } else if (shares.isEmpty()) {
+            itemsPanel.addView(
+                label(
+                    "Nothing is shared yet. The server can still run, but the browser will show an empty library.",
+                    14f,
+                    TrophTheme.MUTED,
+                ).apply { setPadding(0, dp(14), 0, dp(14)) },
             )
         } else {
-            val shares = ShareStore.shares(this)
-            if (shares.isEmpty()) {
-                itemsCard.addView(
-                    text(
-                        "Nothing is shared yet. The server can still run, but the browser will show an empty library.",
-                        14f,
-                        Color.rgb(75, 85, 99),
-                    ).apply { setPadding(0, dp(8), 0, dp(8)) },
-                )
-            } else {
-                for (share in shares) {
-                    itemsCard.addView(shareRow(share))
-                }
+            for (index in shares.indices) {
+                itemsPanel.addView(shareRow(shares[index]))
+                if (index < shares.lastIndex) itemsPanel.addView(rule())
             }
+        }
+        content.addView(
+            itemsPanel,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(10) },
+        )
 
+        if (mode == ShareStore.Mode.SELECTED) {
             val buttons = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
-                setPadding(0, dp(10), 0, 0)
+                setPadding(0, dp(14), 0, 0)
             }
-            buttons.addView(
-                button("Add folder").apply { setOnClickListener { pickFolder() } },
-                rowParams(),
-            )
-            buttons.addView(
-                button("Add files").apply { setOnClickListener { pickFiles() } },
-                rowParams(),
-            )
-            itemsCard.addView(buttons)
+            buttons.addView(secondaryButton("Add folder") { pickFolder() }, rowParams())
+            buttons.addView(secondaryButton("Add files") { pickFiles() }, rowParams().apply { marginEnd = 0 })
+            content.addView(buttons)
 
             if (shares.isNotEmpty()) {
-                itemsCard.addView(
-                    wideButton("Remove all") {
+                content.addView(
+                    dangerButton("Remove all") {
                         ShareStore.clear(this)
                         afterSharingChange(
                             "All shared items were removed.",
                             "All items removed.",
                         )
                     },
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply { topMargin = dp(8) },
                 )
             }
         }
-        content.addView(itemsCard)
 
         content.addView(
-            text(
+            label(
                 "Changes restart the server automatically and keep the same PIN and browser session.",
                 12f,
-                Color.rgb(107, 114, 128),
-            ).apply { setPadding(dp(4), dp(6), dp(4), 0) },
+                TrophTheme.MUTED,
+            ).apply { setPadding(0, dp(18), 0, 0) },
         )
 
         return root
@@ -177,7 +191,7 @@ class SharingActivity : Activity() {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(10), 0, dp(10))
+            setPadding(0, dp(12), 0, dp(12))
         }
         val info = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -187,36 +201,39 @@ class SharingActivity : Activity() {
                 1f,
             )
         }
-        info.addView(text(share.label, 15f, Color.rgb(17, 24, 39), bold = true))
+        info.addView(label(share.label, 15f, TrophTheme.TEXT, bold = true))
         info.addView(
-            text(
+            label(
                 if (share.kind == "file") "File" else "Folder",
                 12f,
-                Color.rgb(75, 85, 99),
-            ),
+                TrophTheme.MUTED,
+            ).apply { setPadding(0, dp(2), 0, 0) },
         )
         if (!File(share.path).exists()) {
             info.addView(
-                text(
+                label(
                     "Missing \u2014 remove and choose again",
                     12f,
-                    Color.rgb(185, 28, 28),
-                ),
+                    TrophTheme.DANGER,
+                ).apply { setPadding(0, dp(2), 0, 0) },
             )
         }
         info.addView(
-            text(share.path, 11f, Color.rgb(107, 114, 128), mono = true).apply {
+            label(share.path, 11f, TrophTheme.MUTED, mono = true).apply {
                 setTextIsSelectable(true)
+                setPadding(0, dp(4), 0, 0)
             },
         )
         row.addView(info)
         row.addView(
-            button("Remove").apply {
-                setOnClickListener {
-                    ShareStore.remove(this@SharingActivity, share.path)
-                    afterSharingChange("A shared item was removed.", "Removed.")
-                }
+            smallButton("Remove") {
+                ShareStore.remove(this@SharingActivity, share.path)
+                afterSharingChange("A shared item was removed.", "Removed.")
             },
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { marginStart = dp(10) },
         )
         return row
     }
@@ -353,72 +370,6 @@ class SharingActivity : Activity() {
             Intent(this, ServerService::class.java).setAction(ServerService.ACTION_RESTART),
         )
     }
-
-    private fun text(
-        value: String,
-        size: Float,
-        color: Int,
-        bold: Boolean = false,
-        mono: Boolean = false,
-    ): TextView {
-        return TextView(this).apply {
-            text = value
-            textSize = size
-            setTextColor(color)
-            if (bold) setTypeface(typeface, Typeface.BOLD)
-            if (mono) typeface = Typeface.MONOSPACE
-            setLineSpacing(0f, 1.05f)
-        }
-    }
-
-    private fun card(): LinearLayout {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(16))
-            background = GradientDrawable().apply {
-                setColor(Color.WHITE)
-                cornerRadius = dp(16).toFloat()
-            }
-            elevation = dp(1).toFloat()
-            val params = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            )
-            params.bottomMargin = dp(14)
-            layoutParams = params
-        }
-    }
-
-    private fun button(label: String): Button {
-        return Button(this).apply {
-            text = label
-            textSize = 14f
-            isAllCaps = false
-            minHeight = dp(44)
-            backgroundTintList = ColorStateList.valueOf(Color.rgb(229, 231, 235))
-            setTextColor(Color.rgb(17, 24, 39))
-        }
-    }
-
-    private fun wideButton(label: String, action: () -> Unit): Button {
-        return button(label).apply {
-            setOnClickListener { action() }
-            val params = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            )
-            params.topMargin = dp(6)
-            layoutParams = params
-        }
-    }
-
-    private fun rowParams(): LinearLayout.LayoutParams {
-        return LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-            marginEnd = dp(6)
-        }
-    }
-
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun toast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
