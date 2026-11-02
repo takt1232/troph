@@ -17,5 +17,8 @@ object ServerBridge {
     external fun stopServer(): String
 
     @JvmStatic
+    external fun transfersJson(): String
+
+    @JvmStatic
     external fun isRunning(): Boolean
 }

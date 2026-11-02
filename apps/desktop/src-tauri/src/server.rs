@@ -1,18 +1,27 @@
 use crate::config::{self, DesktopConfig};
 use pocketfiles_core::{
     start_server_with, start_server_with_snapshot, ImageThumbnails, NoopScanner, Root,
-    RunningServer, ServerConfig, APP_NAME, APP_VERSION,
+    RunningServer, ServerConfig, TransferSnapshot, TransferTracker, APP_NAME, APP_VERSION,
 };
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_opener::OpenerExt;
 
 pub struct ServerSlot {
     server: RunningServer,
     pin: String,
+    transfers_stop: Arc<AtomicBool>,
+}
+
+impl Drop for ServerSlot {
+    fn drop(&mut self) {
+        self.transfers_stop.store(true, Ordering::Relaxed);
+    }
 }
 
 struct Inner {
@@ -37,6 +46,7 @@ pub struct DesktopSnapshot {
     pub port: u16,
     pub roots: Vec<Root>,
     pub config: DesktopConfig,
+    pub transfers: Vec<TransferSnapshot>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -90,6 +100,7 @@ fn snapshot_from(inner: &Inner) -> DesktopSnapshot {
         port: inner.config.port,
         roots: inner.config.roots.clone(),
         config: inner.config.clone(),
+        transfers: Vec::new(),
     };
 
     if let Some(slot) = inner.server.as_ref() {
@@ -102,6 +113,7 @@ fn snapshot_from(inner: &Inner) -> DesktopSnapshot {
         snapshot.device_name = status.device_name;
         snapshot.port = status.port;
         snapshot.roots = slot.server.config.roots.clone();
+        snapshot.transfers = slot.server.transfers();
     }
 
     snapshot
@@ -109,6 +121,77 @@ fn snapshot_from(inner: &Inner) -> DesktopSnapshot {
 
 fn emit(app: &AppHandle, snapshot: &DesktopSnapshot) {
     let _ = app.emit("state-changed", snapshot.clone());
+}
+
+fn transfer_percent(transfers: &[TransferSnapshot]) -> Option<u32> {
+    if transfers.is_empty() {
+        return None;
+    }
+    let mut total = 0u64;
+    let mut loaded = 0u64;
+    for transfer in transfers {
+        let size = transfer.total?;
+        if size == 0 {
+            return None;
+        }
+        total += size;
+        loaded += transfer.loaded.min(size);
+    }
+    if total == 0 {
+        None
+    } else {
+        Some(((loaded * 100) / total).min(100) as u32)
+    }
+}
+
+fn transfer_tooltip(transfers: &[TransferSnapshot]) -> String {
+    if transfers.is_empty() {
+        return APP_NAME.to_string();
+    }
+    let label = if transfers.len() == 1 {
+        "1 file".to_string()
+    } else {
+        format!("{} files", transfers.len())
+    };
+    match transfer_percent(transfers) {
+        Some(percent) => format!("{APP_NAME} \u{b7} receiving {label} \u{b7} {percent}%"),
+        None => format!("{APP_NAME} \u{b7} receiving {label}"),
+    }
+}
+
+fn update_tray_tooltip(app: &AppHandle, transfers: &[TransferSnapshot]) {
+    if let Some(tray) = app.tray_by_id("main") {
+        let _ = tray.set_tooltip(Some(transfer_tooltip(transfers)));
+    }
+}
+
+fn spawn_transfer_monitor(app: AppHandle, tracker: TransferTracker, stop: Arc<AtomicBool>) {
+    std::thread::spawn(move || {
+        let mut previous: Option<Vec<TransferSnapshot>> = None;
+        loop {
+            if stop.load(Ordering::Relaxed) {
+                break;
+            }
+            let transfers = tracker.snapshot();
+            if previous.as_ref() != Some(&transfers) {
+                update_tray_tooltip(&app, &transfers);
+                let _ = app.emit("transfers-changed", transfers.clone());
+                previous = Some(transfers);
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    });
+}
+
+fn make_slot(app: &AppHandle, server: RunningServer, pin: String) -> ServerSlot {
+    let tracker = server.transfer_handle();
+    let transfers_stop = Arc::new(AtomicBool::new(false));
+    spawn_transfer_monitor(app.clone(), tracker, transfers_stop.clone());
+    ServerSlot {
+        server,
+        pin,
+        transfers_stop,
+    }
 }
 
 fn cache_dir(app: &AppHandle) -> PathBuf {
@@ -145,7 +228,7 @@ pub fn start(app: &AppHandle, state: &DesktopState) -> Result<DesktopSnapshot, S
     let pin = generate_pin();
     let config = build_server_config(app, &inner.config, &pin);
     let server = start_server_with(config, Arc::new(ImageThumbnails), Arc::new(NoopScanner))?;
-    inner.server = Some(ServerSlot { server, pin });
+    inner.server = Some(make_slot(app, server, pin));
 
     let snapshot = snapshot_from(&inner);
     drop(inner);
@@ -157,6 +240,7 @@ pub fn stop(app: &AppHandle, state: &DesktopState) -> Result<DesktopSnapshot, St
     let mut inner = state.lock();
     let old = inner.server.take();
     drop(old);
+    update_tray_tooltip(app, &[]);
 
     let snapshot = snapshot_from(&inner);
     drop(inner);
@@ -189,7 +273,7 @@ fn apply_config_locked(
             Some(auth.clone()),
         ) {
             Ok(server) => {
-                inner.server = Some(ServerSlot { server, pin });
+                inner.server = Some(make_slot(app, server, pin));
             }
             Err(error) => {
                 inner.config = previous.clone();
@@ -200,7 +284,7 @@ fn apply_config_locked(
                     Arc::new(NoopScanner),
                     Some(auth),
                 ) {
-                    inner.server = Some(ServerSlot { server, pin });
+                    inner.server = Some(make_slot(app, server, pin));
                 }
                 let snapshot = snapshot_from(inner);
                 return Err((

@@ -218,6 +218,115 @@ code,
   background: var(--muted);
 }
 
+.receiving-card {
+  gap: 12px;
+}
+
+.receiving-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.receiving-title h2 {
+  font-size: 15px;
+}
+
+.receiving-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgba(74, 222, 128, 0.13);
+  animation: receiving-pulse 1.4s ease-in-out infinite;
+}
+
+.transfers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.transfers li {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.transfer-name {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.transfer-name strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.transfer-name span {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.transfer-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.transfer-progress > div {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.15s;
+}
+
+.transfer-progress.indeterminate > div {
+  animation: transfer-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes receiving-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes transfer-slide {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(320%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .receiving-dot,
+  .transfer-progress.indeterminate > div {
+    animation: none;
+  }
+}
+
 .error {
   border: 1px solid #4a2228;
   background: var(--danger-bg);

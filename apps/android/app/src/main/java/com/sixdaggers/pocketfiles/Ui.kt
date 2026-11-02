@@ -12,6 +12,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import java.util.Locale
 
 object TrophTheme {
     const val BG = 0xFF0B0D10.toInt()
@@ -82,6 +83,23 @@ fun Context.rowParams(weight: Float = 1f): LinearLayout.LayoutParams =
     LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, weight).apply {
         marginEnd = dp(8)
     }
+
+fun formatSize(bytes: Long): String {
+    if (bytes <= 0) return "0 B"
+    val units = arrayOf("B", "KB", "MB", "GB", "TB")
+    var value = bytes.toDouble()
+    var index = 0
+    while (value >= 1024 && index < units.lastIndex) {
+        value /= 1024
+        index += 1
+    }
+    val rounded = if (value >= 100 || index == 0) {
+        String.format(Locale.US, "%.0f", value)
+    } else {
+        String.format(Locale.US, "%.1f", value)
+    }
+    return "$rounded ${units[index]}"
+}
 
 fun Context.primaryButton(label: String, onClick: () -> Unit): Button =
     button(label, TrophTheme.ACCENT, TrophTheme.ON_ACCENT, null, onClick)

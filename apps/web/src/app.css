@@ -802,6 +802,8 @@ a {
   right: 16px;
   bottom: calc(84px + env(safe-area-inset-bottom));
   z-index: 50;
+  display: flex;
+  flex-direction: column;
   width: min(340px, calc(100vw - 32px));
   padding: 12px;
   background: var(--surface);
@@ -819,13 +821,52 @@ a {
   font-weight: 600;
 }
 
-.uploads-close {
-  width: 28px;
-  height: 28px;
+.uploads-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uploads-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
+.uploads-action {
+  width: 36px;
+  height: 36px;
+}
+
+.uploads-list {
+  margin-top: 10px;
+  max-height: min(44vh, 340px);
+  padding-right: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.uploads-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.uploads-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.uploads-list::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
 }
 
 .upload-task {
   margin-top: 10px;
+}
+
+.upload-task:first-child {
+  margin-top: 0;
 }
 
 .upload-name {
@@ -840,6 +881,61 @@ a {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.uploads-pill {
+  position: fixed;
+  right: 16px;
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 46px;
+  max-width: min(340px, calc(100vw - 32px));
+  padding: 6px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.uploads-pill:hover {
+  background: var(--surface-2);
+}
+
+.uploads-pill-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uploads-pill > svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.uploads-pill-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.uploads-pill-dot.error {
+  background: var(--danger);
+}
+
+.spinner.small {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
 }
 
 .progress {

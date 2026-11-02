@@ -25,6 +25,14 @@ export interface DesktopSnapshot {
   port: number;
   roots: Root[];
   config: DesktopConfig;
+  transfers: TransferSnapshot[];
+}
+
+export interface TransferSnapshot {
+  id: string;
+  name: string;
+  loaded: number;
+  total: number | null;
 }
 
 export interface SettingsInput {

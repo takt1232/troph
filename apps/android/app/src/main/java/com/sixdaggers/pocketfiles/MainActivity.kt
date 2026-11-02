@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
@@ -15,6 +16,7 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -22,6 +24,7 @@ import android.view.WindowInsets
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -46,6 +49,9 @@ class MainActivity : Activity() {
     private lateinit var notificationRow: SettingRow
     private lateinit var sharingSummaryView: TextView
     private lateinit var credentialsGroup: LinearLayout
+    private lateinit var transfersPanel: LinearLayout
+    private lateinit var transfersTitle: TextView
+    private lateinit var transfersList: LinearLayout
     private var lastQrText: String? = null
 
     private val ticker = object : Runnable {
@@ -185,6 +191,30 @@ class MainActivity : Activity() {
         )
         serverPanel.addView(credentialsGroup)
         content.addView(serverPanel)
+
+        transfersPanel = panel().apply { visibility = View.GONE }
+        val transfersHead = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        transfersHead.addView(
+            View(this).apply {
+                background = dot(TrophTheme.ACCENT)
+                layoutParams = LinearLayout.LayoutParams(dp(8), dp(8)).apply { marginEnd = dp(10) }
+            },
+        )
+        transfersTitle = label("Receiving", 15f, TrophTheme.TEXT, bold = true)
+        transfersHead.addView(transfersTitle)
+        transfersPanel.addView(transfersHead)
+        transfersList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        transfersPanel.addView(transfersList)
+        content.addView(
+            transfersPanel,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(14) },
+        )
 
         content.addView(
             sectionTitle("Setup"),
@@ -326,7 +356,76 @@ class MainActivity : Activity() {
         } else {
             notificationRow.action("Allow") { requestNotificationPermission() }
         }
+        renderTransfers(state?.transfers.orEmpty(), running)
         updateSharingSummary()
+    }
+
+    private fun renderTransfers(transfers: List<ServerService.Transfer>, running: Boolean) {
+        val visible = running && transfers.isNotEmpty()
+        transfersPanel.visibility = if (visible) View.VISIBLE else View.GONE
+        if (!visible) {
+            transfersList.removeAllViews()
+            return
+        }
+        transfersTitle.text = if (transfers.size == 1) {
+            "Receiving 1 file"
+        } else {
+            "Receiving ${transfers.size} files"
+        }
+        transfersList.removeAllViews()
+        for (transfer in transfers) {
+            transfersList.addView(transferRow(transfer))
+        }
+    }
+
+    private fun transferRow(transfer: ServerService.Transfer): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(10), 0, 0)
+        }
+        val nameRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        nameRow.addView(
+            label(transfer.name, 12f, TrophTheme.MUTED).apply {
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.MIDDLE
+                layoutParams = LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1f,
+                )
+            },
+        )
+        val percent = transfer.total
+            ?.takeIf { it > 0 }
+            ?.let { ((transfer.loaded * 100) / it).toInt().coerceIn(0, 100) }
+        nameRow.addView(
+            label(
+                if (percent != null) "$percent%" else formatSize(transfer.loaded),
+                12f,
+                TrophTheme.MUTED,
+            ),
+        )
+        row.addView(nameRow)
+        val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            if (percent == null) {
+                isIndeterminate = true
+            } else {
+                progress = percent
+            }
+            progressTintList = ColorStateList.valueOf(TrophTheme.ACCENT)
+            progressBackgroundTintList = ColorStateList.valueOf(TrophTheme.BORDER)
+            minimumHeight = dp(4)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(4),
+            ).apply { topMargin = dp(6) }
+        }
+        row.addView(progress)
+        return row
     }
 
     private fun updateSharingSummary() {

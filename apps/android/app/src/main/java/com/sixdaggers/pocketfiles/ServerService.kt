@@ -23,6 +23,13 @@ import java.security.SecureRandom
 import java.util.Locale
 
 class ServerService : Service() {
+    data class Transfer(
+        val id: String,
+        val name: String,
+        val loaded: Long,
+        val total: Long?,
+    )
+
     data class State(
         val running: Boolean,
         val starting: Boolean,
@@ -30,6 +37,7 @@ class ServerService : Service() {
         val pin: String?,
         val hostname: String?,
         val error: String?,
+        val transfers: List<Transfer> = emptyList(),
     )
 
     companion object {
@@ -47,6 +55,13 @@ class ServerService : Service() {
     }
 
     private val handler = Handler(Looper.getMainLooper())
+    private val transferTicker = object : Runnable {
+        override fun run() {
+            if (!running) return
+            refreshTransfers()
+            handler.postDelayed(this, 1000)
+        }
+    }
     private val nativeLock = Any()
     private var running = false
     private var generation = 0
@@ -77,6 +92,7 @@ class ServerService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        stopTransferTicker()
         running = false
         generation += 1
         synchronized(nativeLock) {
@@ -111,6 +127,7 @@ class ServerService : Service() {
     }
 
     private fun launchServer(restart: Boolean) {
+        stopTransferTicker()
         val previous = if (restart) state else null
         val launchGeneration = ++generation
         state = State(false, true, previous?.url, pin, previous?.hostname, null)
@@ -153,6 +170,7 @@ class ServerService : Service() {
                     val hostname = parsed.optString("hostname").ifBlank { null }
                     state = State(true, false, url, pin, hostname, null)
                     updateNotification()
+                    startTransferTicker()
                 } else {
                     state = State(
                         false,
@@ -177,6 +195,7 @@ class ServerService : Service() {
             return
         }
         generation += 1
+        stopTransferTicker()
         state = State(false, false, null, pin, null, null)
         Thread {
             synchronized(nativeLock) {
@@ -268,6 +287,53 @@ class ServerService : Service() {
         return String.format(Locale.US, "%06d", n)
     }
 
+    private fun startTransferTicker() {
+        handler.removeCallbacks(transferTicker)
+        handler.post(transferTicker)
+    }
+
+    private fun stopTransferTicker() {
+        handler.removeCallbacks(transferTicker)
+    }
+
+    private fun refreshTransfers() {
+        val current = state ?: return
+        val transfers = readTransfers()
+        if (transfers != current.transfers) {
+            state = current.copy(transfers = transfers)
+            updateNotification()
+        }
+    }
+
+    private fun readTransfers(): List<Transfer> {
+        val raw = try {
+            ServerBridge.transfersJson()
+        } catch (t: Throwable) {
+            Log.w(TAG, "cannot read transfers", t)
+            return emptyList()
+        }
+        return try {
+            val array = JSONArray(raw)
+            buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    val id = item.optString("id")
+                    val name = item.optString("name")
+                    if (id.isBlank() || name.isBlank()) continue
+                    val total = if (item.has("total") && !item.isNull("total")) {
+                        item.optLong("total")
+                    } else {
+                        null
+                    }
+                    add(Transfer(id, name, item.optLong("loaded"), total))
+                }
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "bad transfer payload", t)
+            emptyList()
+        }
+    }
+
     private fun createNotificationChannel() {
         val nm = getSystemService(NotificationManager::class.java)
         val channel = NotificationChannel(
@@ -281,7 +347,11 @@ class ServerService : Service() {
         nm.createNotificationChannel(channel)
     }
 
-    private fun buildNotification(title: String, text: String?): Notification {
+    private fun buildNotification(
+        title: String,
+        text: String?,
+        transfers: List<Transfer> = emptyList(),
+    ): Notification {
         val openIntent = PendingIntent.getActivity(
             this,
             1,
@@ -299,6 +369,7 @@ class ServerService : Service() {
             .setContentTitle(title)
             .setContentIntent(openIntent)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_SERVICE)
             .addAction(
                 Notification.Action.Builder(
@@ -308,18 +379,49 @@ class ServerService : Service() {
                 ).build(),
             )
         if (text != null) builder.setContentText(text)
+        if (transfers.isNotEmpty()) {
+            val total = transfers.mapNotNull { it.total }.sum()
+            val loaded = transfers.sumOf { it.loaded }
+            if (transfers.all { it.total != null && it.total > 0 } && total > 0) {
+                val progress = ((loaded * 100) / total).toInt().coerceIn(0, 100)
+                builder.setProgress(100, progress, false)
+            } else {
+                builder.setProgress(0, 0, true)
+            }
+        }
         return builder.build()
     }
 
     private fun updateNotification() {
         val current = state
-        val text = if (current?.running == true) {
-            current.url ?: "Server running"
-        } else {
-            "Server running"
+        val transfers = current?.transfers.orEmpty()
+        val text = when {
+            transfers.isNotEmpty() -> transferSummary(transfers)
+            current?.running == true -> current.url ?: "Server running"
+            else -> "Server running"
         }
         val nm = getSystemService(NotificationManager::class.java)
-        nm.notify(NOTIFICATION_ID, buildNotification("Troph server", text))
+        nm.notify(NOTIFICATION_ID, buildNotification("Troph server", text, transfers))
+    }
+
+    private fun transferSummary(transfers: List<Transfer>): String {
+        val percent = transferPercent(transfers)
+        if (transfers.size == 1) {
+            val name = transfers[0].name
+            return if (percent == null) "Receiving $name" else "Receiving $name \u00b7 $percent%"
+        }
+        val label = "Receiving ${transfers.size} files"
+        return if (percent == null) label else "$label \u00b7 $percent%"
+    }
+
+    private fun transferPercent(transfers: List<Transfer>): Int? {
+        if (transfers.isEmpty() || transfers.any { it.total == null || it.total <= 0 }) {
+            return null
+        }
+        val total = transfers.sumOf { it.total ?: 0 }
+        if (total <= 0) return null
+        val loaded = transfers.sumOf { it.loaded }
+        return ((loaded * 100) / total).toInt().coerceIn(0, 100)
     }
 
     @Suppress("DEPRECATION")

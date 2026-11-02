@@ -48,6 +48,7 @@
   let showDelete = $state(false);
   let transfer = $state<{ op: 'move' | 'copy'; paths: string[] } | null>(null);
   let uploads = $state<UploadTask[]>([]);
+  let uploadsCollapsed = $state(localStorage.getItem('pf-uploads-collapsed') === '1');
   let uploadQueue: { id: string; file: File; name: string }[] = [];
   let uploading = false;
   let dragActive = $state(false);
@@ -452,8 +453,14 @@
       uploadQueue.push({ id, file: item.file, name: item.name });
     }
     if (items.length > 0) {
+      setUploadsCollapsed(false);
       void processUploads();
     }
+  }
+
+  function setUploadsCollapsed(next: boolean) {
+    uploadsCollapsed = next;
+    localStorage.setItem('pf-uploads-collapsed', next ? '1' : '0');
   }
 
   async function processUploads() {
@@ -704,7 +711,12 @@
       />
     {/if}
 
-    <UploadPanel tasks={uploads} onDismiss={() => (uploads = [])} />
+    <UploadPanel
+      tasks={uploads}
+      collapsed={uploadsCollapsed}
+      onToggle={() => setUploadsCollapsed(!uploadsCollapsed)}
+      onDismiss={() => (uploads = [])}
+    />
 
     {#if toast}
       <div class="toast" class:error={toastError}>{toast}</div>

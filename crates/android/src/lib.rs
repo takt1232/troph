@@ -44,6 +44,15 @@ fn status_json(server: &RunningServer) -> String {
     })
 }
 
+fn transfers_json() -> String {
+    let guard = SERVER.lock().unwrap_or_else(|poison| poison.into_inner());
+    let transfers = guard
+        .as_ref()
+        .map(|server| server.transfers())
+        .unwrap_or_default();
+    serde_json::to_string(&transfers).unwrap_or_else(|_| "[]".to_string())
+}
+
 fn global_class(env: &mut JNIEnv, name: &str) -> Result<GlobalRef, String> {
     let class = env
         .find_class(name)
@@ -274,6 +283,22 @@ pub extern "system" fn Java_com_sixdaggers_pocketfiles_ServerBridge_restartServe
             &mut env,
             &json!({"ok": false, "error": "native panic in restartServer"}).to_string(),
         ),
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_sixdaggers_pocketfiles_ServerBridge_transfersJson(
+    mut env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    init_logging();
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let transfers = transfers_json();
+        make_jstring(&mut env, &transfers)
+    }));
+    match result {
+        Ok(pointer) => pointer,
+        Err(_) => make_jstring(&mut env, "[]"),
     }
 }
 

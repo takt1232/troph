@@ -17,9 +17,10 @@
     stopServer,
     updateSettings,
   } from './lib/api';
-  import type { DesktopSnapshot, Root } from './lib/types';
+  import type { DesktopSnapshot, Root, TransferSnapshot } from './lib/types';
 
   let snapshot = $state<DesktopSnapshot | null>(null);
+  let transfers = $state<TransferSnapshot[]>([]);
   let loading = $state(true);
   let busy = $state(false);
   let error = $state('');
@@ -60,6 +61,7 @@
 
   function applySnapshot(next: DesktopSnapshot) {
     snapshot = next;
+    transfers = next.transfers ?? [];
     settings = {
       port: next.config.port,
       deviceName: next.config.deviceName,
@@ -111,14 +113,19 @@
         error = event.payload;
         showNotice(event.payload);
       });
+      const offTransfers = await listen<TransferSnapshot[]>('transfers-changed', (event) => {
+        transfers = event.payload;
+      });
       if (disposed) {
         offState();
         offError();
+        offTransfers();
         return;
       }
       unlisten = () => {
         offState();
         offError();
+        offTransfers();
       };
     };
 
@@ -239,6 +246,24 @@
       }
     }
   }
+
+  function transferPercent(transfer: TransferSnapshot): number | null {
+    if (!transfer.total || transfer.total <= 0) return null;
+    return Math.min(100, Math.round((transfer.loaded / transfer.total) * 100));
+  }
+
+  function transferMeta(transfer: TransferSnapshot): string {
+    const percent = transferPercent(transfer);
+    return percent === null ? formatSize(transfer.loaded) : `${percent}%`;
+  }
+
+  function formatSize(bytes: number): string {
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    const value = bytes / 1024 ** index;
+    return `${value >= 100 || index === 0 ? Math.round(value) : value.toFixed(1)} ${units[index]}`;
+  }
 </script>
 
 {#if loading}
@@ -280,6 +305,34 @@
         <p class="hint">Add at least one folder or file below to start the server.</p>
       {/if}
     </section>
+
+    {#if running && transfers.length > 0}
+      <section class="card receiving-card" aria-live="polite">
+        <div class="card-title">
+          <div class="receiving-title">
+            <span class="receiving-dot"></span>
+            <h2>
+              Receiving {transfers.length === 1 ? '1 file' : `${transfers.length} files`}
+            </h2>
+          </div>
+          <span class="badge">Incoming</span>
+        </div>
+        <ul class="transfers">
+          {#each transfers as transfer (transfer.id)}
+            {@const percent = transferPercent(transfer)}
+            <li>
+              <div class="transfer-name">
+                <strong title={transfer.name}>{transfer.name}</strong>
+                <span>{transferMeta(transfer)}</span>
+              </div>
+              <div class="transfer-progress" class:indeterminate={percent === null}>
+                <div style={`width:${percent ?? 35}%`}></div>
+              </div>
+            </li>
+          {/each}
+        </ul>
+      </section>
+    {/if}
 
     {#if running}
       <section class="card">

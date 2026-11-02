@@ -5,6 +5,7 @@ mod ops;
 mod paths;
 mod server;
 mod thumbs;
+mod transfers;
 mod zip_route;
 
 use serde::{Deserialize, Serialize};
@@ -17,6 +18,7 @@ pub use server::{start_server, start_server_with, start_server_with_snapshot, Ru
 pub use thumbs::cleanup_cache;
 #[cfg(any(feature = "dev-thumbs", feature = "image-thumbs"))]
 pub use thumbs::ImageThumbnails;
+pub use transfers::{TransferSnapshot, TransferTracker};
 
 pub const APP_NAME: &str = "Troph";
 pub const APP_VERSION: &str = env!("APP_VERSION");
@@ -139,4 +141,5 @@ pub(crate) struct AppState {
     pub cache_dir: PathBuf,
     pub thumb_sem: Arc<tokio::sync::Semaphore>,
     pub thumb_writes: Arc<AtomicU64>,
+    pub transfers: transfers::TransferTracker,
 }

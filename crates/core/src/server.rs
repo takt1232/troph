@@ -7,7 +7,7 @@ use crate::thumbs;
 use crate::zip_route;
 use crate::{
     AppState, MediaScanner, NoopScanner, NoopThumbnails, Root, ServerConfig, ServerStatus,
-    ThumbnailProvider, APP_NAME, APP_VERSION, DEFAULT_PORT,
+    ThumbnailProvider, TransferSnapshot, TransferTracker, APP_NAME, APP_VERSION, DEFAULT_PORT,
 };
 use axum::body::Body;
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Query, Request, State};
@@ -45,6 +45,7 @@ pub struct RunningServer {
     shutdown: CancellationToken,
     mdns: Option<MdnsRegistration>,
     auth: Arc<auth::Auth>,
+    transfers: TransferTracker,
     pub config: ServerConfig,
     pub port: u16,
     pub urls: Vec<String>,
@@ -73,6 +74,14 @@ impl RunningServer {
 
     pub fn auth_snapshot(&self) -> auth::AuthSnapshot {
         self.auth.snapshot()
+    }
+
+    pub fn transfers(&self) -> Vec<TransferSnapshot> {
+        self.transfers.snapshot()
+    }
+
+    pub fn transfer_handle(&self) -> TransferTracker {
+        self.transfers.clone()
     }
 }
 
@@ -147,6 +156,7 @@ pub fn start_server_with_snapshot(
         None => auth::Auth::new(config.pin.clone()),
     });
     let paths = Arc::new(sandbox);
+    let transfers = TransferTracker::default();
     let state = AppState {
         config: Arc::new(config.clone()),
         paths: paths.clone(),
@@ -156,6 +166,7 @@ pub fn start_server_with_snapshot(
         cache_dir,
         thumb_sem: thumbs::new_semaphore(),
         thumb_writes: Arc::new(AtomicU64::new(0)),
+        transfers: transfers.clone(),
     };
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -210,6 +221,7 @@ pub fn start_server_with_snapshot(
         shutdown,
         mdns,
         auth,
+        transfers,
         config,
         port,
         urls,
@@ -544,6 +556,7 @@ async fn upload(
     let name = query
         .name
         .ok_or_else(|| ApiError::bad_request("missing file name"))?;
+    let transfer_name = name.clone();
     let overwrite = query.overwrite;
     let paths = state.paths.clone();
     let target = tokio::task::spawn_blocking(move || {
@@ -569,6 +582,13 @@ async fn upload(
         .await
         .map_err(|error| ApiError::io("cannot create temporary upload", error))?;
 
+    let expected_total = request
+        .headers()
+        .get(header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok());
+    let transfer = state.transfers.start(transfer_name, expected_total);
+
     let mut stream = request.into_body().into_data_stream();
     let mut total = 0u64;
     while let Some(chunk) = stream.next().await {
@@ -582,6 +602,7 @@ async fn upload(
             }
         };
         total += chunk.len() as u64;
+        state.transfers.update(transfer.id(), total);
         if total > MAX_UPLOAD_BYTES {
             let _ = tokio::fs::remove_file(&temp).await;
             return Err(ApiError::payload_too_large("upload is too large"));
@@ -601,6 +622,7 @@ async fn upload(
         let _ = tokio::fs::remove_file(&temp).await;
         return Err(ApiError::io("cannot finalize upload", error));
     }
+    drop(transfer);
     state.scanner.scan(&target);
     let name = target
         .file_name()

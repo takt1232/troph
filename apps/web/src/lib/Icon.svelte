@@ -93,6 +93,10 @@
     <path d="m14 6-6 6 6 6" />
   {:else if name === 'chevron-right'}
     <path d="m10 6 6 6-6 6" />
+  {:else if name === 'chevron-up'}
+    <path d="m6 15 6-6 6 6" />
+  {:else if name === 'chevron-down'}
+    <path d="m6 9 6 6 6-6" />
   {:else if name === 'server'}
     <rect x="3" y="4" width="18" height="7" rx="2" />
     <rect x="3" y="13" width="18" height="7" rx="2" />
