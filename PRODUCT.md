@@ -64,7 +64,7 @@ Confirmed functionality:
 - Browse folders and files from any modern browser.
 - Stream video and audio, and preview images and PDFs with byte-range support.
 - Generate and cache thumbnails for images and videos on Android, and image thumbnails on desktop.
-- Upload individual files or entire folders with progress.
+- Upload individual files or entire folders in parallel, with progress and estimated time remaining.
 - Create folders; rename, move, copy, and delete items.
 - Download one file or a selection as a streamed ZIP archive.
 - Share selected folders/files, or optionally all storage on Android.

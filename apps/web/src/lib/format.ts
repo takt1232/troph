@@ -8,6 +8,20 @@ export function formatSize(bytes: number): string {
   return `${value >= 100 || index === 0 ? Math.round(value) : value.toFixed(1)} ${units[index]}`;
 }
 
+export function formatDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 1) return '<1s';
+  const total = Math.round(seconds);
+  if (total < 60) return `${total}s`;
+  const minutes = Math.floor(total / 60);
+  const remainder = total % 60;
+  if (minutes < 60) {
+    return remainder === 0 ? `${minutes}m` : `${minutes}m ${remainder}s`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+}
+
 export function formatDate(seconds: number): string {
   if (!seconds) return '';
   const date = new Date(seconds * 1000);

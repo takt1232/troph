@@ -14,6 +14,7 @@ const [major, minor, patch, build] = parts;
 const semver = build === 0 ? `${major}.${minor}.${patch}` : `${major}.${minor}.${patch}+${build}`;
 
 for (const packagePath of [
+  join(root, 'package.json'),
   join(root, 'apps/desktop/package.json'),
   join(root, 'apps/web/package.json'),
 ]) {

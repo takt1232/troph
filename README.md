@@ -20,7 +20,7 @@ over the local network. Nothing leaves your LAN.
 - Browse folders and files from any modern browser
 - Stream video and audio, and preview images and PDFs with byte-range support
 - Generate and cache thumbnails for images and videos on Android, and images on desktop
-- Upload individual files or entire folders with progress
+- Upload individual files or entire folders in parallel, with progress and estimated time remaining
 - Create folders, rename, move, copy, and delete items
 - Download one file or a selection as a streamed ZIP archive
 - Share selected folders/files, or optionally all storage
@@ -219,7 +219,8 @@ Android storage restrictions.
 ### Transfer behavior
 
 - `/api/raw` supports `Range` and `If-None-Match` for streaming and resumable media playback.
-- Uploads stream to a temporary file then rename into place, with a 100 GiB cap.
+- Uploads stream to a temporary file then rename into place, with a 100 GiB cap. Up to four
+  files upload concurrently.
 - ZIP downloads are generated and streamed on the fly; already-compressed media is stored
   without recompression.
 - Thumbnails are keyed by path, size, file length, and modification time, cached on disk,
@@ -269,8 +270,9 @@ remote access. Anyone with the PIN and network access can read and modify shared
 ## Versioning
 
 `VERSION` is the canonical four-part version (`major.minor.patch.build`). Run
-`node scripts/sync-version.mjs` after editing it to update the Cargo workspace and desktop
-package versions; `scripts/bump-version.sh` increments the build component and syncs them.
+`node scripts/sync-version.mjs` after editing it to update the Cargo workspace and npm package
+versions; `scripts/bump-version.sh` increments the build component and syncs them. Record notable
+changes in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## License
 

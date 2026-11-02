@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import type { UploadTask } from './types';
+  import { formatDuration } from './format';
   import Icon from './Icon.svelte';
 
   let {
@@ -26,6 +28,7 @@
   const failed = $derived(tasks.filter((task) => task.status === 'error'));
   const done = $derived(tasks.filter((task) => task.status === 'done'));
   const active = $derived(uploading.length + queued.length);
+  const pending = $derived([...uploading, ...queued]);
   const ordered = $derived(
     tasks
       .map((task, index) => ({ task, index }))
@@ -35,9 +38,54 @@
       )
       .map(({ task }) => task),
   );
-  const current = $derived(uploading[0]);
-  const currentPercent = $derived(
-    current && current.total > 0 ? progressPercent(current) : null,
+  const pendingLoaded = $derived(
+    pending.reduce((sum, task) => sum + Math.min(task.loaded, task.total), 0),
+  );
+  const pendingTotal = $derived(
+    pending.reduce((sum, task) => sum + Math.max(0, task.total), 0),
+  );
+  const progressBytes = $derived(
+    done.reduce((sum, task) => sum + Math.max(0, task.total), 0) + pendingLoaded,
+  );
+  const overallPercent = $derived(
+    pendingTotal > 0
+      ? Math.min(100, Math.round((pendingLoaded / pendingTotal) * 100))
+      : null,
+  );
+
+  let speed = $state(0);
+  let lastSampleAt = 0;
+  let lastSampleProgress = 0;
+  let sampling = false;
+
+  onMount(() => {
+    const timer = window.setInterval(() => {
+      if (uploading.length === 0) {
+        speed = 0;
+        sampling = false;
+        return;
+      }
+      const now = performance.now();
+      if (!sampling) {
+        sampling = true;
+        lastSampleAt = now;
+        lastSampleProgress = progressBytes;
+        return;
+      }
+      const elapsed = (now - lastSampleAt) / 1000;
+      if (elapsed < 0.4) return;
+      const instant = Math.max(0, (progressBytes - lastSampleProgress) / elapsed);
+      speed = speed === 0 ? instant : speed * 0.7 + instant * 0.3;
+      lastSampleAt = now;
+      lastSampleProgress = progressBytes;
+    }, 500);
+    return () => window.clearInterval(timer);
+  });
+
+  const etaLabel = $derived(
+    speed > 0 && pendingTotal > pendingLoaded
+      ? formatDuration((pendingTotal - pendingLoaded) / speed)
+      : null,
   );
 
   function progressPercent(task: UploadTask): number {
@@ -61,8 +109,10 @@
 
   const summary = $derived.by(() => {
     if (uploading.length > 0) {
-      const base = `Uploading ${uploading.length} of ${active}`;
-      return currentPercent === null ? base : `${base} · ${currentPercent}%`;
+      const parts = [`Uploading ${uploading.length} of ${active}`];
+      if (overallPercent !== null) parts.push(`${overallPercent}%`);
+      if (etaLabel !== null) parts.push(`~${etaLabel} left`);
+      return parts.join(' · ');
     }
     if (queued.length > 0) {
       return `Waiting to upload ${queued.length} ${queued.length === 1 ? 'file' : 'files'}`;

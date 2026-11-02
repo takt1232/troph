@@ -29,6 +29,7 @@
   import Menu from './lib/Menu.svelte';
 
   const appVersion = __APP_VERSION__;
+  const MAX_PARALLEL_UPLOADS = 4;
 
   let me = $state<Me | null>(null);
   let listing = $state<Listing | null>(null);
@@ -49,8 +50,10 @@
   let transfer = $state<{ op: 'move' | 'copy'; paths: string[] } | null>(null);
   let uploads = $state<UploadTask[]>([]);
   let uploadsCollapsed = $state(localStorage.getItem('pf-uploads-collapsed') === '1');
-  let uploadQueue: { id: string; file: File; name: string }[] = [];
-  let uploading = false;
+  let uploadQueue: { id: string; file: File; name: string; dir: string }[] = [];
+  let activeUploads = 0;
+  let uploadFailures = 0;
+  let dirtyUploadDirs = new Set<string>();
   let dragActive = $state(false);
   let fileInput: HTMLInputElement | undefined = $state();
   let folderInput: HTMLInputElement | undefined = $state();
@@ -434,10 +437,16 @@
 
   function enqueueFiles(files: FileList | File[]) {
     if (!listing || listing.is_file_root || listing.is_virtual_root) return;
+    const dir = listing.path;
     const items = Array.from(files).map((file) => {
       const withPath = file as File & { webkitRelativePath?: string };
       return { file, name: withPath.webkitRelativePath || file.name };
     });
+    if (items.length === 0) return;
+    if (activeUploads === 0 && uploadQueue.length === 0) {
+      uploadFailures = 0;
+      dirtyUploadDirs = new Set();
+    }
     for (const item of items) {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       uploads = [
@@ -450,12 +459,10 @@
           status: 'queued',
         },
       ];
-      uploadQueue.push({ id, file: item.file, name: item.name });
+      uploadQueue.push({ id, file: item.file, name: item.name, dir });
     }
-    if (items.length > 0) {
-      setUploadsCollapsed(false);
-      void processUploads();
-    }
+    setUploadsCollapsed(false);
+    pumpUploads();
   }
 
   function setUploadsCollapsed(next: boolean) {
@@ -463,36 +470,55 @@
     localStorage.setItem('pf-uploads-collapsed', next ? '1' : '0');
   }
 
-  async function processUploads() {
-    if (uploading || !listing) return;
-    uploading = true;
-    const destination = listing.path;
+  function pumpUploads() {
+    while (activeUploads < MAX_PARALLEL_UPLOADS && uploadQueue.length > 0) {
+      const item = uploadQueue.shift()!;
+      activeUploads += 1;
+      void runUpload(item);
+    }
+    if (activeUploads === 0 && uploadQueue.length === 0) {
+      void finishUploadBatch();
+    }
+  }
+
+  async function runUpload(item: { id: string; file: File; name: string; dir: string }) {
+    patchUpload(item.id, { status: 'uploading', message: undefined });
     try {
-      while (uploadQueue.length > 0) {
-        const item = uploadQueue.shift()!;
-        patchUpload(item.id, { status: 'uploading' });
-        try {
-          await uploadFile(item.file, item.name, destination, (loaded, total) => {
-            patchUpload(item.id, { loaded, total });
-          });
-          patchUpload(item.id, { status: 'done', loaded: item.file.size, total: item.file.size });
-        } catch (error) {
-          patchUpload(item.id, { status: 'error', message: errorMessage(error, 'Upload failed') });
-          if (error instanceof ApiError && error.status === 401) {
-            me = null;
-            loginError = 'Your session expired. Sign in again.';
-          }
-        }
-      }
-      showToast('Uploads finished');
-      if (listing?.path === destination) {
-        await refresh();
+      await uploadFile(item.file, item.name, item.dir, (loaded, total) => {
+        patchUpload(item.id, { loaded, total });
+      });
+      patchUpload(item.id, {
+        status: 'done',
+        loaded: item.file.size,
+        total: item.file.size,
+      });
+      dirtyUploadDirs.add(item.dir);
+    } catch (error) {
+      uploadFailures += 1;
+      patchUpload(item.id, { status: 'error', message: errorMessage(error, 'Upload failed') });
+      if (error instanceof ApiError && error.status === 401) {
+        me = null;
+        loginError = 'Your session expired. Sign in again.';
       }
     } finally {
-      uploading = false;
-      if (listing && me) {
-        void refresh();
-      }
+      activeUploads -= 1;
+      pumpUploads();
+    }
+  }
+
+  async function finishUploadBatch() {
+    if (uploadFailures > 0) {
+      showToast(
+        `${uploadFailures} upload${uploadFailures === 1 ? '' : 's'} failed`,
+        true,
+      );
+    } else {
+      showToast('Uploads finished');
+    }
+    const shouldRefresh = listing ? dirtyUploadDirs.has(listing.path) : false;
+    dirtyUploadDirs = new Set();
+    if (shouldRefresh && me) {
+      await refresh();
     }
   }
 
