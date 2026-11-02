@@ -1,0 +1,21 @@
+{
+  "name": "pocketfiles",
+  "private": true,
+  "version": "1.1.0",
+  "workspaces": [
+    "apps/web",
+    "apps/desktop"
+  ],
+  "scripts": {
+    "web:dev": "npm run dev -w troph-web",
+    "web:build": "npm run build -w troph-web",
+    "web:check": "npm run check -w troph-web",
+    "desktop:dev": "npm run web:build && npm run tauri dev -w troph-desktop",
+    "desktop:build": "npm run web:build && npm run tauri build -w troph-desktop",
+    "desktop:check": "npm run check -w troph-desktop",
+    "build": "npm run web:build && npm run build -w troph-desktop",
+    "check": "npm run web:check && npm run desktop:check",
+    "tauri": "npm run tauri -w troph-desktop",
+    "version:sync": "node scripts/sync-version.mjs"
+  }
+}

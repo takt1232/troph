@@ -47,7 +47,7 @@
   >
     <div class="login-mark"><Icon name="server" size={30} /></div>
     <h1>Troph</h1>
-    <p>Enter the PIN shown on your phone to open your files.</p>
+    <p>Enter the PIN shown by Troph to open your files.</p>
     <input
       bind:this={input}
       bind:value={pin}

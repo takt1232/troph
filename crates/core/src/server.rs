@@ -37,7 +37,7 @@ style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-s
 object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'";
 
 #[derive(RustEmbed)]
-#[folder = "../../web/dist"]
+#[folder = "../../apps/web/dist"]
 struct WebAssets;
 
 pub struct RunningServer {

@@ -6,7 +6,8 @@ license.workspace = true
 
 [features]
 default = []
-dev-thumbs = ["dep:image"]
+dev-thumbs = ["image-thumbs"]
+image-thumbs = ["dep:image"]
 
 [dependencies]
 axum.workspace = true

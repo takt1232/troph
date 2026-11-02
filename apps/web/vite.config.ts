@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 
-const appVersion = readFileSync(new URL('../VERSION', import.meta.url), 'utf8').trim();
+const appVersion = readFileSync(new URL('../../VERSION', import.meta.url), 'utf8').trim();
 
 export default defineConfig({
   plugins: [svelte()],

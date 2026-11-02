@@ -298,7 +298,7 @@
 
   function openEntry(entry: Entry) {
     if (entry.restricted) {
-      showToast('Android/data and Android/obb are not accessible on Android 11+', true);
+      showToast('Android/data and Android/obb are not accessible.', true);
       return;
     }
     if (entry.is_dir) {
@@ -311,7 +311,7 @@
   function toggleEntry(entry: Entry) {
     if (!listing || listing.is_file_root || listing.is_virtual_root) return;
     if (entry.restricted) {
-      showToast('This folder is restricted by Android', true);
+      showToast('This folder is restricted.', true);
       return;
     }
     if (selected.includes(entry.path)) {
@@ -578,7 +578,7 @@
         {#if me.roots.length === 0}
           <div class="empty">
             <strong>Nothing is shared yet</strong>
-            <p>On your phone, open Troph and choose folders or files to share, then restart the server.</p>
+            <p>On the host, open Troph and choose folders or files to share, then restart the server.</p>
             <button class="button small" onclick={reload}>Refresh</button>
           </div>
         {:else if loadingListing}
@@ -586,7 +586,7 @@
         {:else}
           <div class="empty">
             <strong>Cannot open shared items</strong>
-            <p>The shared folders or files may have moved or been removed. Check the sharing settings on your phone.</p>
+            <p>The shared folders or files may have moved or been removed. Check the sharing settings on the host.</p>
             <button class="button small" onclick={reload}>Refresh</button>
           </div>
         {/if}

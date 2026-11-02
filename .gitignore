@@ -5,7 +5,9 @@
 
 # Node / frontend
 node_modules/
-web/dist/
+apps/web/dist/
+apps/desktop/dist/
+apps/desktop/src-tauri/gen/
 npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*
@@ -24,8 +26,8 @@ captures/
 *.jks
 
 # Compiled native libraries copied into the Android app
-android/app/src/main/jniLibs/**/*.so
-android/android/
+apps/android/app/src/main/jniLibs/**/*.so
+apps/android/android/
 
 # IDE
 .idea/

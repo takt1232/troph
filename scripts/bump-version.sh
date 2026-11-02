@@ -8,4 +8,4 @@ prefix="${version%.*}"
 build="${version##*.}"
 
 printf '%s.%d' "$prefix" "$((build + 1))" > "$file"
-cat "$file"
+node "$root/scripts/sync-version.mjs"

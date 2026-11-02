@@ -174,10 +174,10 @@ pub fn new_semaphore() -> std::sync::Arc<Semaphore> {
     std::sync::Arc::new(Semaphore::new(2))
 }
 
-#[cfg(feature = "dev-thumbs")]
+#[cfg(any(feature = "dev-thumbs", feature = "image-thumbs"))]
 pub struct ImageThumbnails;
 
-#[cfg(feature = "dev-thumbs")]
+#[cfg(any(feature = "dev-thumbs", feature = "image-thumbs"))]
 impl crate::ThumbnailProvider for ImageThumbnails {
     fn thumbnail(&self, path: &Path, size: u32) -> Result<Option<ThumbnailData>, String> {
         let kind = files::kind_for_path(path);

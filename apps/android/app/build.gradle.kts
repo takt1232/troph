@@ -3,7 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-val appVersion = rootProject.file("../VERSION").readText().trim()
+val appVersion = rootProject.file("../../VERSION").readText().trim()
 val appVersionCode = appVersion
     .split('.')
     .fold(0) { acc, part -> acc * 1000 + part.toInt() }

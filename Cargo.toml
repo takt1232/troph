@@ -1,9 +1,15 @@
 [workspace]
-members = ["crates/core", "crates/dev", "crates/android"]
+members = [
+  "apps/desktop/src-tauri",
+  "crates/android",
+  "crates/core",
+  "crates/dev",
+]
+default-members = ["crates/core", "crates/dev"]
 resolver = "2"
 
 [workspace.package]
-version = "1.0.1"
+version = "1.1.0"
 edition = "2021"
 license = "MIT"
 

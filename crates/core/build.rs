@@ -2,6 +2,7 @@ use std::fs;
 
 fn main() {
     println!("cargo:rerun-if-changed=../../VERSION");
+    println!("cargo:rerun-if-changed=../../apps/web/dist");
     let version = fs::read_to_string("../../VERSION")
         .expect("cannot read VERSION")
         .trim()

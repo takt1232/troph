@@ -15,7 +15,7 @@ use std::sync::Arc;
 pub use auth::AuthSnapshot;
 pub use server::{start_server, start_server_with, start_server_with_snapshot, RunningServer};
 pub use thumbs::cleanup_cache;
-#[cfg(feature = "dev-thumbs")]
+#[cfg(any(feature = "dev-thumbs", feature = "image-thumbs"))]
 pub use thumbs::ImageThumbnails;
 
 pub const APP_NAME: &str = "Troph";
