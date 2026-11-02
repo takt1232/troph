@@ -9,6 +9,15 @@ When preparing a release:
 2. Run `node scripts/sync-version.mjs` to sync the Cargo workspace and npm package versions.
 3. Add a new section at the top of this file.
 
+## [1.1.3.1] - 2026-11-02
+
+### Fixed
+
+- Dragging a folder from the OS file manager onto the web page now uploads its contents
+  recursively, preserving the folder name and nested structure, instead of treating the folder
+  as a single failed file.
+- Parallel uploads into the same new folder no longer fail when they race to create it.
+
 ## [1.1.3.0] - 2026-11-02
 
 ### Added

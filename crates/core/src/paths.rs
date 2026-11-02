@@ -192,8 +192,21 @@ impl PathSandbox {
                 }
                 Ok(_) => {}
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                    std::fs::create_dir(&dir)
-                        .map_err(|error| ApiError::io("cannot create directory", error))?;
+                    match std::fs::create_dir(&dir) {
+                        Ok(()) => {}
+                        Err(create_error)
+                            if create_error.kind() == std::io::ErrorKind::AlreadyExists =>
+                        {
+                            let metadata = std::fs::symlink_metadata(&dir)
+                                .map_err(|error| ApiError::io("cannot inspect directory", error))?;
+                            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                                return Err(ApiError::io("cannot create directory", create_error));
+                            }
+                        }
+                        Err(create_error) => {
+                            return Err(ApiError::io("cannot create directory", create_error));
+                        }
+                    }
                 }
                 Err(error) => return Err(ApiError::io("cannot inspect directory", error)),
             }

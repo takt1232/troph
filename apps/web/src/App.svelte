@@ -18,6 +18,7 @@
     uploadFile,
   } from './lib/api';
   import type { Entry, Listing, Me, UploadTask } from './lib/types';
+  import { collectDroppedFiles, type DroppedFile } from './lib/drop';
   import Icon from './lib/Icon.svelte';
   import Login from './lib/Login.svelte';
   import EntryCard from './lib/EntryCard.svelte';
@@ -436,12 +437,16 @@
   }
 
   function enqueueFiles(files: FileList | File[]) {
-    if (!listing || listing.is_file_root || listing.is_virtual_root) return;
-    const dir = listing.path;
     const items = Array.from(files).map((file) => {
       const withPath = file as File & { webkitRelativePath?: string };
       return { file, name: withPath.webkitRelativePath || file.name };
     });
+    enqueueUploads(items);
+  }
+
+  function enqueueUploads(items: DroppedFile[]) {
+    if (!listing || listing.is_file_root || listing.is_virtual_root) return;
+    const dir = listing.path;
     if (items.length === 0) return;
     if (activeUploads === 0 && uploadQueue.length === 0) {
       uploadFailures = 0;
@@ -526,11 +531,15 @@
     uploads = uploads.map((task) => (task.id === id ? { ...task, ...patch } : task));
   }
 
-  function onDrop(event: DragEvent) {
+  async function onDrop(event: DragEvent) {
     event.preventDefault();
     dragActive = false;
-    if (event.dataTransfer?.files.length) {
-      enqueueFiles(event.dataTransfer.files);
+    if (!event.dataTransfer) return;
+    try {
+      const items = await collectDroppedFiles(event.dataTransfer);
+      enqueueUploads(items);
+    } catch {
+      showToast('Could not read the dropped files', true);
     }
   }
 
