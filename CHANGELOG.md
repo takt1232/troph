@@ -12,6 +12,25 @@ When preparing a release:
 If you edit `VERSION` manually, run `node scripts/sync-version.mjs` afterward to sync the Cargo
 workspace and npm package versions.
 
+## [1.2.0.2] - 2026-11-03
+
+### Added
+
+- Live transfer speed in the upload panel and collapsed pill, sampled and smoothed over the
+  upload so the rate stays readable instead of jumping between chunks.
+- `formatSpeed()` helper for human-readable bytes-per-second values.
+- `scripts/build-android.sh` to build and install the Android app in one step: builds the web
+  UI, cross-compiles the native library with `cargo-ndk`, builds the APK with Gradle, and
+  installs it with `adb`. Supports `--release`, `--no-install`, `--no-web`, `--launch`, and
+  `--serial`.
+
+### Changed
+
+- `scripts/bump-version.sh` now takes `--major`, `--minor`, `--patch`, or `--build`, validates
+  that `VERSION` has four numeric components, resets the lower components when a higher one is
+  incremented, and syncs the Cargo workspace and npm package versions.
+- README and changelog versioning instructions now describe the per-component bump workflow.
+
 ## [1.1.3.1] - 2026-11-02
 
 ### Fixed
