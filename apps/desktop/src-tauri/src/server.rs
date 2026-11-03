@@ -387,3 +387,16 @@ pub fn open_file_manager(app: &AppHandle, state: &DesktopState) -> Result<(), St
         .open_url(url, None::<&str>)
         .map_err(|error| format!("cannot open the browser: {error}"))
 }
+
+pub fn cancel_transfer(state: &DesktopState, id: String) -> Result<(), String> {
+    let inner = state.lock();
+    let slot = inner
+        .server
+        .as_ref()
+        .ok_or_else(|| "The server is not running.".to_string())?;
+    if slot.server.cancel_transfer(&id) {
+        Ok(())
+    } else {
+        Err("That transfer already finished.".to_string())
+    }
+}

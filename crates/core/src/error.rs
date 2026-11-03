@@ -7,6 +7,7 @@ use serde_json::json;
 pub struct ApiError {
     pub status: StatusCode,
     pub message: String,
+    pub code: Option<&'static str>,
 }
 
 impl ApiError {
@@ -14,7 +15,14 @@ impl ApiError {
         Self {
             status,
             message: message.into(),
+            code: None,
         }
+    }
+
+    /// Attach a machine-readable code to the JSON error body.
+    pub fn with_code(mut self, code: &'static str) -> Self {
+        self.code = Some(code);
+        self
     }
 
     pub fn bad_request(message: impl Into<String>) -> Self {
@@ -64,6 +72,10 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (self.status, Json(json!({ "error": self.message }))).into_response()
+        let mut body = json!({ "error": self.message });
+        if let Some(code) = self.code {
+            body["code"] = json!(code);
+        }
+        (self.status, Json(body)).into_response()
     }
 }

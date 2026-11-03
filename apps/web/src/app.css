@@ -840,6 +840,24 @@ a {
   height: 36px;
 }
 
+.uploads-cancel-all {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.uploads-cancel-all:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
 .uploads-list {
   margin-top: 10px;
   max-height: min(44vh, 340px);
@@ -875,6 +893,37 @@ a {
   gap: 8px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.upload-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.upload-row .upload-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.upload-cancel {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-top: -3px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.upload-cancel:hover {
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .upload-name span:first-child {
@@ -960,6 +1009,10 @@ a {
 
 .progress.error > div {
   background: var(--danger);
+}
+
+.progress.cancelled > div {
+  background: var(--border-strong);
 }
 
 /* Toast */

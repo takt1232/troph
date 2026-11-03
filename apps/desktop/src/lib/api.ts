@@ -28,3 +28,7 @@ export function updateSettings(settings: SettingsInput): Promise<DesktopSnapshot
 export function openFileManager(): Promise<void> {
   return invoke('open_file_manager');
 }
+
+export function cancelTransfer(id: string): Promise<void> {
+  return invoke('cancel_transfer', { id });
+}

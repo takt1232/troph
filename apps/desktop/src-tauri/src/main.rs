@@ -132,6 +132,11 @@ fn open_file_manager(
     server::open_file_manager(&app, &state)
 }
 
+#[tauri::command]
+fn cancel_transfer(state: tauri::State<'_, DesktopState>, id: String) -> Result<(), String> {
+    server::cancel_transfer(&state, id)
+}
+
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
@@ -162,7 +167,8 @@ fn main() {
             add_root,
             remove_root,
             update_settings,
-            open_file_manager
+            open_file_manager,
+            cancel_transfer
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {

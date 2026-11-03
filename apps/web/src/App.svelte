@@ -16,6 +16,7 @@
     ROOTS_PATH,
     transferItems,
     uploadFile,
+    UploadCancelledError,
   } from './lib/api';
   import type { Entry, Listing, Me, UploadTask } from './lib/types';
   import { collectDroppedFiles, type DroppedFile } from './lib/drop';
@@ -54,7 +55,9 @@
   let uploadQueue: { id: string; file: File; name: string; dir: string }[] = [];
   let activeUploads = 0;
   let uploadFailures = 0;
+  let uploadCancellations = 0;
   let dirtyUploadDirs = new Set<string>();
+  const uploadControllers = new Map<string, AbortController>();
   let dragActive = $state(false);
   let fileInput: HTMLInputElement | undefined = $state();
   let folderInput: HTMLInputElement | undefined = $state();
@@ -450,6 +453,7 @@
     if (items.length === 0) return;
     if (activeUploads === 0 && uploadQueue.length === 0) {
       uploadFailures = 0;
+      uploadCancellations = 0;
       dirtyUploadDirs = new Set();
     }
     for (const item of items) {
@@ -487,28 +491,36 @@
   }
 
   async function runUpload(item: { id: string; file: File; name: string; dir: string }) {
+    const controller = new AbortController();
+    uploadControllers.set(item.id, controller);
     patchUpload(item.id, { status: 'uploading', message: undefined, speed: 0 });
     let lastSampleAt = 0;
     let lastSampleLoaded = 0;
     let hasSample = false;
     let speed = 0;
     try {
-      await uploadFile(item.file, item.name, item.dir, (loaded, total) => {
-        const now = performance.now();
-        if (!hasSample) {
-          hasSample = true;
-          lastSampleAt = now;
-          lastSampleLoaded = loaded;
-        }
-        const elapsed = (now - lastSampleAt) / 1000;
-        if (elapsed >= 0.4) {
-          const instant = Math.max(0, (loaded - lastSampleLoaded) / elapsed);
-          speed = speed === 0 ? instant : speed * 0.7 + instant * 0.3;
-          lastSampleAt = now;
-          lastSampleLoaded = loaded;
-        }
-        patchUpload(item.id, { loaded, total, speed });
-      });
+      await uploadFile(
+        item.file,
+        item.name,
+        item.dir,
+        (loaded, total) => {
+          const now = performance.now();
+          if (!hasSample) {
+            hasSample = true;
+            lastSampleAt = now;
+            lastSampleLoaded = loaded;
+          }
+          const elapsed = (now - lastSampleAt) / 1000;
+          if (elapsed >= 0.4) {
+            const instant = Math.max(0, (loaded - lastSampleLoaded) / elapsed);
+            speed = speed === 0 ? instant : speed * 0.7 + instant * 0.3;
+            lastSampleAt = now;
+            lastSampleLoaded = loaded;
+          }
+          patchUpload(item.id, { loaded, total, speed });
+        },
+        controller.signal,
+      );
       patchUpload(item.id, {
         status: 'done',
         loaded: item.file.size,
@@ -517,27 +529,38 @@
       });
       dirtyUploadDirs.add(item.dir);
     } catch (error) {
-      uploadFailures += 1;
-      patchUpload(item.id, {
-        status: 'error',
-        message: errorMessage(error, 'Upload failed'),
-        speed: 0,
-      });
-      if (error instanceof ApiError && error.status === 401) {
-        me = null;
-        loginError = 'Your session expired. Sign in again.';
+      if (error instanceof UploadCancelledError || isAbortError(error)) {
+        uploadCancellations += 1;
+        patchUpload(item.id, { status: 'cancelled', message: undefined, speed: 0 });
+      } else {
+        uploadFailures += 1;
+        patchUpload(item.id, {
+          status: 'error',
+          message: errorMessage(error, 'Upload failed'),
+          speed: 0,
+        });
+        if (error instanceof ApiError && error.status === 401) {
+          me = null;
+          loginError = 'Your session expired. Sign in again.';
+        }
       }
     } finally {
+      uploadControllers.delete(item.id);
       activeUploads -= 1;
       pumpUploads();
     }
   }
 
   async function finishUploadBatch() {
+    const cancelled = uploadCancellations;
     if (uploadFailures > 0) {
       showToast(
         `${uploadFailures} upload${uploadFailures === 1 ? '' : 's'} failed`,
         true,
+      );
+    } else if (cancelled > 0) {
+      showToast(
+        `${cancelled} upload${cancelled === 1 ? '' : 's'} cancelled`,
       );
     } else {
       showToast('Uploads finished');
@@ -547,6 +570,33 @@
     if (shouldRefresh && me) {
       await refresh();
     }
+  }
+
+  function cancelUpload(id: string) {
+    const task = uploads.find((item) => item.id === id);
+    if (!task) return;
+    if (task.status === 'queued') {
+      uploadQueue = uploadQueue.filter((item) => item.id !== id);
+      uploadCancellations += 1;
+      patchUpload(id, { status: 'cancelled', message: undefined, speed: 0 });
+      pumpUploads();
+    } else if (task.status === 'uploading') {
+      uploadControllers.get(id)?.abort();
+    }
+  }
+
+  function cancelAllUploads() {
+    uploadQueue = [];
+    for (const task of uploads) {
+      if (task.status === 'queued') {
+        uploadCancellations += 1;
+        patchUpload(task.id, { status: 'cancelled', message: undefined, speed: 0 });
+      }
+    }
+    for (const controller of uploadControllers.values()) {
+      controller.abort();
+    }
+    pumpUploads();
   }
 
   function patchUpload(id: string, patch: Partial<UploadTask>) {
@@ -773,6 +823,8 @@
       collapsed={uploadsCollapsed}
       onToggle={() => setUploadsCollapsed(!uploadsCollapsed)}
       onDismiss={() => (uploads = [])}
+      onCancel={cancelUpload}
+      onCancelAll={cancelAllUploads}
     />
 
     {#if toast}

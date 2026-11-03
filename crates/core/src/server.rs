@@ -83,6 +83,16 @@ impl RunningServer {
     pub fn transfer_handle(&self) -> TransferTracker {
         self.transfers.clone()
     }
+
+    /// Cancel one in-flight upload. Returns `false` if it already finished.
+    pub fn cancel_transfer(&self, id: &str) -> bool {
+        self.transfers.cancel(id)
+    }
+
+    /// Cancel every in-flight upload. Returns how many were newly cancelled.
+    pub fn cancel_all_transfers(&self) -> usize {
+        self.transfers.cancel_all()
+    }
 }
 
 impl Drop for RunningServer {
@@ -588,13 +598,22 @@ async fn upload(
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.parse::<u64>().ok());
     let transfer = state.transfers.start(transfer_name, expected_total);
+    let cancelled = || {
+        ApiError::conflict("upload cancelled by the host").with_code("upload_cancelled")
+    };
 
     let mut stream = request.into_body().into_data_stream();
     let mut total = 0u64;
     while let Some(chunk) = stream.next().await {
+        if transfer.is_cancelled() {
+            drop(file);
+            let _ = tokio::fs::remove_file(&temp).await;
+            return Err(cancelled());
+        }
         let chunk = match chunk {
             Ok(chunk) => chunk,
             Err(error) => {
+                drop(file);
                 let _ = tokio::fs::remove_file(&temp).await;
                 return Err(ApiError::bad_request(format!(
                     "upload interrupted: {error}"
@@ -604,19 +623,38 @@ async fn upload(
         total += chunk.len() as u64;
         state.transfers.update(transfer.id(), total);
         if total > MAX_UPLOAD_BYTES {
+            drop(file);
             let _ = tokio::fs::remove_file(&temp).await;
             return Err(ApiError::payload_too_large("upload is too large"));
         }
         if let Err(error) = file.write_all(&chunk).await {
+            drop(file);
             let _ = tokio::fs::remove_file(&temp).await;
             return Err(ApiError::io("cannot write upload", error));
         }
     }
     if let Err(error) = file.flush().await {
+        drop(file);
         let _ = tokio::fs::remove_file(&temp).await;
         return Err(ApiError::io("cannot flush upload", error));
     }
+    if transfer.is_cancelled() {
+        drop(file);
+        let _ = tokio::fs::remove_file(&temp).await;
+        return Err(cancelled());
+    }
     drop(file);
+
+    // Guard against a client that disconnects or cancels mid-body: without this
+    // check a cleanly closed partial body could be finalized as a truncated file.
+    if let Some(expected) = expected_total {
+        if total != expected {
+            let _ = tokio::fs::remove_file(&temp).await;
+            return Err(ApiError::bad_request(format!(
+                "upload interrupted: expected {expected} bytes, received {total}"
+            )));
+        }
+    }
 
     if let Err(error) = tokio::fs::rename(&temp, &target).await {
         let _ = tokio::fs::remove_file(&temp).await;

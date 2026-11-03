@@ -1,7 +1,7 @@
 {
   "name": "troph-desktop",
   "private": true,
-  "version": "1.2.0+2",
+  "version": "1.4.0+1",
   "type": "module",
   "scripts": {
     "dev": "vite",

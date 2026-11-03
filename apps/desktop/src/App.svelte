@@ -10,6 +10,7 @@
   import QRCode from 'qrcode';
   import {
     addRoot,
+    cancelTransfer,
     getState,
     openFileManager,
     removeRoot,
@@ -257,6 +258,14 @@
     return percent === null ? formatSize(transfer.loaded) : `${percent}%`;
   }
 
+  async function handleCancelTransfer(id: string) {
+    try {
+      await cancelTransfer(id);
+    } catch (error) {
+      showNotice(message(error));
+    }
+  }
+
   function formatSize(bytes: number): string {
     if (!bytes) return '0 B';
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -324,6 +333,14 @@
               <div class="transfer-name">
                 <strong title={transfer.name}>{transfer.name}</strong>
                 <span>{transferMeta(transfer)}</span>
+                <button
+                  class="transfer-cancel"
+                  onclick={() => handleCancelTransfer(transfer.id)}
+                  aria-label={`Cancel ${transfer.name}`}
+                  title="Cancel transfer"
+                >
+                  Cancel
+                </button>
               </div>
               <div class="transfer-progress" class:indeterminate={percent === null}>
                 <div style={`width:${percent ?? 35}%`}></div>

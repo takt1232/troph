@@ -9,25 +9,32 @@
     collapsed,
     onToggle,
     onDismiss,
+    onCancel,
+    onCancelAll,
   }: {
     tasks: UploadTask[];
     collapsed: boolean;
     onToggle: () => void;
     onDismiss: () => void;
+    onCancel: (id: string) => void;
+    onCancelAll: () => void;
   } = $props();
 
   const statusRank: Record<UploadTask['status'], number> = {
     uploading: 0,
     queued: 1,
     error: 2,
-    done: 3,
+    cancelled: 3,
+    done: 4,
   };
 
   const uploading = $derived(tasks.filter((task) => task.status === 'uploading'));
   const queued = $derived(tasks.filter((task) => task.status === 'queued'));
   const failed = $derived(tasks.filter((task) => task.status === 'error'));
+  const cancelled = $derived(tasks.filter((task) => task.status === 'cancelled'));
   const done = $derived(tasks.filter((task) => task.status === 'done'));
   const active = $derived(uploading.length + queued.length);
+  const expected = $derived(tasks.length - cancelled.length);
   const pending = $derived([...uploading, ...queued]);
   const ordered = $derived(
     tasks
@@ -47,9 +54,14 @@
   const progressBytes = $derived(
     done.reduce((sum, task) => sum + Math.max(0, task.total), 0) + pendingLoaded,
   );
+  const totalBytes = $derived(
+    tasks
+      .filter((task) => task.status !== 'cancelled')
+      .reduce((sum, task) => sum + Math.max(0, task.total), 0),
+  );
   const overallPercent = $derived(
-    pendingTotal > 0
-      ? Math.min(100, Math.round((pendingLoaded / pendingTotal) * 100))
+    totalBytes > 0
+      ? Math.min(100, Math.round((progressBytes / totalBytes) * 100))
       : null,
   );
 
@@ -103,6 +115,7 @@
     if (task.status === 'error') return 'Failed';
     if (task.status === 'done') return 'Done';
     if (task.status === 'queued') return 'Queued';
+    if (task.status === 'cancelled') return 'Cancelled';
     const parts: string[] = [];
     parts.push(task.total > 0 ? `${progressPercent(task)}%` : 'Uploading');
     const speedLabel = formatSpeed(task.speed ?? 0);
@@ -112,7 +125,7 @@
 
   const summary = $derived.by(() => {
     if (uploading.length > 0) {
-      const parts = [`Uploading ${uploading.length} of ${active}`];
+      const parts = [`Uploaded ${done.length} of ${expected}`];
       if (overallPercent !== null) parts.push(`${overallPercent}%`);
       if (etaLabel !== null) parts.push(`~${etaLabel} left`);
       return parts.join(' · ');
@@ -122,6 +135,13 @@
     }
     if (failed.length > 0) {
       return `${failed.length} upload${failed.length === 1 ? '' : 's'} failed`;
+    }
+    if (cancelled.length > 0) {
+      const cancelledLabel = `${cancelled.length} cancelled`;
+      if (done.length === 0) {
+        return `${cancelled.length} upload${cancelled.length === 1 ? '' : 's'} cancelled`;
+      }
+      return `${done.length} uploaded · ${cancelledLabel}`;
     }
     return `${done.length} upload${done.length === 1 ? '' : 's'} complete`;
   });
@@ -150,6 +170,9 @@
       <div class="uploads-head">
         <span class="uploads-title">{summary}</span>
         <div class="uploads-actions">
+          {#if active > 0}
+            <button class="uploads-cancel-all" onclick={onCancelAll}>Cancel all</button>
+          {/if}
           <button
             class="icon-button uploads-action"
             onclick={onToggle}
@@ -173,11 +196,23 @@
       <div class="uploads-list" id="uploads-list">
         {#each ordered as task (task.id)}
           <div class="upload-task">
-            <div class="upload-name">
-              <span title={task.name}>{task.name}</span>
-              <span>{statusLabel(task)}</span>
+            <div class="upload-row">
+              <div class="upload-name">
+                <span title={task.name}>{task.name}</span>
+                <span>{statusLabel(task)}</span>
+              </div>
+              {#if task.status === 'queued' || task.status === 'uploading'}
+                <button
+                  class="upload-cancel"
+                  onclick={() => onCancel(task.id)}
+                  aria-label={`Cancel ${task.name}`}
+                  title="Cancel upload"
+                >
+                  <Icon name="close" size={14} />
+                </button>
+              {/if}
             </div>
-            <div class="progress" class:error={task.status === 'error'}>
+            <div class="progress" class:error={task.status === 'error'} class:cancelled={task.status === 'cancelled'}>
               <div style={`width:${barWidth(task)}%`}></div>
             </div>
           </div>

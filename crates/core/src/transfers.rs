@@ -1,5 +1,6 @@
 use serde::Serialize;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use uuid::Uuid;
 
@@ -18,6 +19,7 @@ struct TransferEntry {
     name: String,
     loaded: u64,
     total: Option<u64>,
+    cancel: Arc<AtomicBool>,
 }
 
 #[derive(Default)]
@@ -34,6 +36,7 @@ pub struct TransferTracker {
 impl TransferTracker {
     pub fn start(&self, name: impl Into<String>, total: Option<u64>) -> TransferGuard {
         let id = Uuid::new_v4().to_string();
+        let cancel = Arc::new(AtomicBool::new(false));
         let mut inner = self.lock();
         let sequence = inner.next_sequence;
         inner.next_sequence += 1;
@@ -44,12 +47,14 @@ impl TransferTracker {
                 name: name.into(),
                 loaded: 0,
                 total,
+                cancel: cancel.clone(),
             },
         );
         drop(inner);
         TransferGuard {
             tracker: self.clone(),
             id,
+            cancel,
         }
     }
 
@@ -57,6 +62,27 @@ impl TransferTracker {
         if let Some(entry) = self.lock().active.get_mut(id) {
             entry.loaded = loaded;
         }
+    }
+
+    /// Ask an active transfer to stop. Returns `false` if it already finished.
+    pub fn cancel(&self, id: &str) -> bool {
+        match self.lock().active.get(id) {
+            Some(entry) => {
+                entry.cancel.store(true, Ordering::Relaxed);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Ask every active transfer to stop. Returns how many were newly cancelled.
+    pub fn cancel_all(&self) -> usize {
+        let inner = self.lock();
+        inner
+            .active
+            .values()
+            .filter(|entry| !entry.cancel.swap(true, Ordering::Relaxed))
+            .count()
     }
 
     pub fn finish(&self, id: &str) {
@@ -88,11 +114,16 @@ impl TransferTracker {
 pub struct TransferGuard {
     tracker: TransferTracker,
     id: String,
+    cancel: Arc<AtomicBool>,
 }
 
 impl TransferGuard {
     pub fn id(&self) -> &str {
         &self.id
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancel.load(Ordering::Relaxed)
     }
 }
 

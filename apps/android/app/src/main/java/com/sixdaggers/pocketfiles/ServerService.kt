@@ -44,6 +44,7 @@ class ServerService : Service() {
         const val ACTION_START = "com.sixdaggers.pocketfiles.START"
         const val ACTION_RESTART = "com.sixdaggers.pocketfiles.RESTART"
         const val ACTION_STOP = "com.sixdaggers.pocketfiles.STOP"
+        const val ACTION_CANCEL_TRANSFERS = "com.sixdaggers.pocketfiles.CANCEL_TRANSFERS"
         const val EXTRA_PORT = "port"
         private const val CHANNEL_ID = "pocketfiles-server"
         private const val NOTIFICATION_ID = 1
@@ -85,6 +86,7 @@ class ServerService : Service() {
             }
             ACTION_RESTART -> restartServer()
             ACTION_STOP -> stopServerAndSelf()
+            ACTION_CANCEL_TRANSFERS -> cancelAllTransfers()
         }
         return START_NOT_STICKY
     }
@@ -305,6 +307,15 @@ class ServerService : Service() {
         }
     }
 
+    private fun cancelAllTransfers() {
+        try {
+            ServerBridge.cancelAllTransfers()
+        } catch (t: Throwable) {
+            Log.w(TAG, "cancelAllTransfers failed", t)
+        }
+        refreshTransfers()
+    }
+
     private fun readTransfers(): List<Transfer> {
         val raw = try {
             ServerBridge.transfersJson()
@@ -380,6 +391,19 @@ class ServerService : Service() {
             )
         if (text != null) builder.setContentText(text)
         if (transfers.isNotEmpty()) {
+            val cancelIntent = PendingIntent.getService(
+                this,
+                3,
+                Intent(this, ServerService::class.java).setAction(ACTION_CANCEL_TRANSFERS),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            builder.addAction(
+                Notification.Action.Builder(
+                    null,
+                    "Cancel transfers",
+                    cancelIntent,
+                ).build(),
+            )
             val total = transfers.mapNotNull { it.total }.sum()
             val loaded = transfers.sumOf { it.loaded }
             if (transfers.all { it.total != null && it.total > 0 } && total > 0) {

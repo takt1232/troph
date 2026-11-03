@@ -408,6 +408,18 @@ class MainActivity : Activity() {
                 TrophTheme.MUTED,
             ),
         )
+        nameRow.addView(
+            smallButton("Cancel") { cancelTransfer(transfer.id) }.apply {
+                textSize = 11f
+                minHeight = dp(28)
+                minimumHeight = dp(28)
+                setPadding(dp(8), 0, dp(8), 0)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { marginStart = dp(8) }
+            },
+        )
         row.addView(nameRow)
         val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
@@ -426,6 +438,15 @@ class MainActivity : Activity() {
         }
         row.addView(progress)
         return row
+    }
+
+    private fun cancelTransfer(id: String) {
+        val cancelled = try {
+            ServerBridge.cancelTransfer(id)
+        } catch (_: Throwable) {
+            false
+        }
+        if (!cancelled) toast("That transfer already finished.")
     }
 
     private fun updateSharingSummary() {

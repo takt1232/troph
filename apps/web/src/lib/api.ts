@@ -4,10 +4,19 @@ export const ROOTS_PATH = '@roots';
 
 export class ApiError extends Error {
   status: number;
+  code?: string;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
+  }
+}
+
+export class UploadCancelledError extends Error {
+  constructor(message = 'Upload cancelled') {
+    super(message);
+    this.name = 'UploadCancelledError';
   }
 }
 
@@ -39,7 +48,11 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
       data && typeof data === 'object' && 'error' in data
         ? String((data as { error: unknown }).error)
         : text || `Request failed (${response.status})`;
-    throw new ApiError(response.status, message);
+    const code =
+      data && typeof data === 'object' && 'code' in data
+        ? String((data as { code: unknown }).code)
+        : undefined;
+    throw new ApiError(response.status, message, code);
   }
   return data as T;
 }
@@ -119,9 +132,33 @@ export function uploadFile(
   relativeName: string,
   dir: string,
   onProgress: (loaded: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<{ ok: boolean; path: string; name: string; size: number }> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new UploadCancelledError());
+      return;
+    }
     const xhr = new XMLHttpRequest();
+    let settled = false;
+
+    function cleanup() {
+      signal?.removeEventListener('abort', abortUpload);
+    }
+
+    function settle(callback: () => void) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback();
+    }
+
+    function abortUpload() {
+      xhr.abort();
+      settle(() => reject(new UploadCancelledError()));
+    }
+
+    signal?.addEventListener('abort', abortUpload);
     xhr.open(
       'POST',
       `/api/upload?dir=${encodeURIComponent(dir)}&name=${encodeURIComponent(relativeName)}`,
@@ -132,7 +169,9 @@ export function uploadFile(
         onProgress(event.loaded, event.total);
       }
     };
-    xhr.onerror = () => reject(new ApiError(0, 'Network error during upload'));
+    xhr.onerror = () =>
+      settle(() => reject(new ApiError(0, 'Network error during upload')));
+    xhr.onabort = () => settle(() => reject(new UploadCancelledError()));
     xhr.onload = () => {
       let data: any = null;
       try {
@@ -141,11 +180,19 @@ export function uploadFile(
         data = null;
       }
       if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(data);
+        settle(() => resolve(data));
       } else if (xhr.status === 401) {
-        reject(new ApiError(401, 'Login required'));
+        settle(() => reject(new ApiError(401, 'Login required')));
+      } else if (data?.code === 'upload_cancelled') {
+        settle(() =>
+          reject(new UploadCancelledError(data?.error || 'Upload cancelled by the host')),
+        );
       } else {
-        reject(new ApiError(xhr.status, data?.error || `Upload failed (${xhr.status})`));
+        settle(() =>
+          reject(
+            new ApiError(xhr.status, data?.error || `Upload failed (${xhr.status})`, data?.code),
+          ),
+        );
       }
     };
     xhr.send(file);

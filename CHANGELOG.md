@@ -12,6 +12,35 @@ When preparing a release:
 If you edit `VERSION` manually, run `node scripts/sync-version.mjs` afterward to sync the Cargo
 workspace and npm package versions.
 
+## [1.4.0.1] - 2026-11-03
+
+### Added
+
+- Cancel queued or in-progress uploads from the web upload panel, either one file at a time or
+  the whole batch.
+- Cancel incoming transfers from the host: a Cancel action on each receiving row in the desktop
+  app and the Android transfer list.
+- A "Cancel transfers" action on the Android server notification.
+- Machine-readable `code` field on API error responses so the web client can distinguish a
+  host-cancelled upload from a network failure.
+
+### Fixed
+
+- Uploads interrupted mid-body (including client-side cancellation) no longer finalize a
+  truncated file; the temporary file is removed instead.
+
+## [1.3.0.1] - 2026-11-03
+
+### Changed
+
+- Upload panel summary now reports how many files have finished against the total batch (for
+  example, "Uploaded 2 of 12") instead of the number of files currently in flight.
+
+### Fixed
+
+- Aggregate upload percentage now reflects the whole batch, so it increases steadily instead of
+  dropping each time a file completes.
+
 ## [1.2.0.2] - 2026-11-03
 
 ### Added

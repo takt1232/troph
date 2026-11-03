@@ -48,6 +48,6 @@ export interface UploadTask {
   loaded: number;
   total: number;
   speed?: number;
-  status: 'queued' | 'uploading' | 'done' | 'error';
+  status: 'queued' | 'uploading' | 'done' | 'error' | 'cancelled';
   message?: string;
 }

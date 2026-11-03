@@ -303,6 +303,46 @@ pub extern "system" fn Java_com_sixdaggers_pocketfiles_ServerBridge_transfersJso
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_sixdaggers_pocketfiles_ServerBridge_cancelTransfer(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: JString,
+) -> jboolean {
+    init_logging();
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let id: String = match env.get_string(&id) {
+            Ok(value) => value.into(),
+            Err(error) => {
+                log::warn!("cancelTransfer: bad id: {error}");
+                return JNI_FALSE;
+            }
+        };
+        let guard = SERVER.lock().unwrap_or_else(|poison| poison.into_inner());
+        match guard.as_ref() {
+            Some(server) if server.cancel_transfer(&id) => JNI_TRUE,
+            _ => JNI_FALSE,
+        }
+    }));
+    result.unwrap_or(JNI_FALSE)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_sixdaggers_pocketfiles_ServerBridge_cancelAllTransfers(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jboolean {
+    init_logging();
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let guard = SERVER.lock().unwrap_or_else(|poison| poison.into_inner());
+        match guard.as_ref() {
+            Some(server) if server.cancel_all_transfers() > 0 => JNI_TRUE,
+            _ => JNI_FALSE,
+        }
+    }));
+    result.unwrap_or(JNI_FALSE)
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_sixdaggers_pocketfiles_ServerBridge_stopServer(
     mut env: JNIEnv,
     _class: JClass,
