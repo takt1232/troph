@@ -883,6 +883,12 @@ a {
   white-space: nowrap;
 }
 
+.upload-name span:last-child {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .uploads-pill {
   position: fixed;
   right: 16px;

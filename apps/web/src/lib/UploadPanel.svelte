@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { UploadTask } from './types';
-  import { formatDuration } from './format';
+  import { formatDuration, formatSpeed } from './format';
   import Icon from './Icon.svelte';
 
   let {
@@ -103,8 +103,11 @@
     if (task.status === 'error') return 'Failed';
     if (task.status === 'done') return 'Done';
     if (task.status === 'queued') return 'Queued';
-    if (task.total > 0) return `${progressPercent(task)}%`;
-    return 'Uploading';
+    const parts: string[] = [];
+    parts.push(task.total > 0 ? `${progressPercent(task)}%` : 'Uploading');
+    const speedLabel = formatSpeed(task.speed ?? 0);
+    if (speedLabel) parts.push(speedLabel);
+    return parts.join(' · ');
   }
 
   const summary = $derived.by(() => {

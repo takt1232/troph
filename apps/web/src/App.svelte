@@ -487,20 +487,42 @@
   }
 
   async function runUpload(item: { id: string; file: File; name: string; dir: string }) {
-    patchUpload(item.id, { status: 'uploading', message: undefined });
+    patchUpload(item.id, { status: 'uploading', message: undefined, speed: 0 });
+    let lastSampleAt = 0;
+    let lastSampleLoaded = 0;
+    let hasSample = false;
+    let speed = 0;
     try {
       await uploadFile(item.file, item.name, item.dir, (loaded, total) => {
-        patchUpload(item.id, { loaded, total });
+        const now = performance.now();
+        if (!hasSample) {
+          hasSample = true;
+          lastSampleAt = now;
+          lastSampleLoaded = loaded;
+        }
+        const elapsed = (now - lastSampleAt) / 1000;
+        if (elapsed >= 0.4) {
+          const instant = Math.max(0, (loaded - lastSampleLoaded) / elapsed);
+          speed = speed === 0 ? instant : speed * 0.7 + instant * 0.3;
+          lastSampleAt = now;
+          lastSampleLoaded = loaded;
+        }
+        patchUpload(item.id, { loaded, total, speed });
       });
       patchUpload(item.id, {
         status: 'done',
         loaded: item.file.size,
         total: item.file.size,
+        speed: 0,
       });
       dirtyUploadDirs.add(item.dir);
     } catch (error) {
       uploadFailures += 1;
-      patchUpload(item.id, { status: 'error', message: errorMessage(error, 'Upload failed') });
+      patchUpload(item.id, {
+        status: 'error',
+        message: errorMessage(error, 'Upload failed'),
+        speed: 0,
+      });
       if (error instanceof ApiError && error.status === 401) {
         me = null;
         loginError = 'Your session expired. Sign in again.';

@@ -8,6 +8,11 @@ export function formatSize(bytes: number): string {
   return `${value >= 100 || index === 0 ? Math.round(value) : value.toFixed(1)} ${units[index]}`;
 }
 
+export function formatSpeed(bytesPerSecond: number): string {
+  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) return '';
+  return `${formatSize(bytesPerSecond)}/s`;
+}
+
 export function formatDuration(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 1) return '<1s';
   const total = Math.round(seconds);

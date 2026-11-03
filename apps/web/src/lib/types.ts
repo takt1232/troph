@@ -47,6 +47,7 @@ export interface UploadTask {
   name: string;
   loaded: number;
   total: number;
+  speed?: number;
   status: 'queued' | 'uploading' | 'done' | 'error';
   message?: string;
 }
