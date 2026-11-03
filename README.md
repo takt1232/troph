@@ -269,9 +269,10 @@ remote access. Anyone with the PIN and network access can read and modify shared
 
 ## Versioning
 
-`VERSION` is the canonical four-part version (`major.minor.patch.build`). Run
-`node scripts/sync-version.mjs` after editing it to update the Cargo workspace and npm package
-versions; `scripts/bump-version.sh` increments the build component and syncs them. Record notable
+`VERSION` is the canonical four-part version (`major.minor.patch.build`). Increment one component
+with `scripts/bump-version.sh --major`, `--minor`, `--patch`, or `--build`; the script updates
+`VERSION` and runs `scripts/sync-version.mjs` to update the Cargo workspace and npm package
+versions. Incrementing major, minor, or patch resets the lower components to zero. Record notable
 changes in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## License

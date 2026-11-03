@@ -5,9 +5,12 @@ All notable changes to Troph are recorded here. The canonical version is the fou
 
 When preparing a release:
 
-1. Update `VERSION`, or run `scripts/bump-version.sh` to increment the build component.
-2. Run `node scripts/sync-version.mjs` to sync the Cargo workspace and npm package versions.
-3. Add a new section at the top of this file.
+1. Run `scripts/bump-version.sh` with `--major`, `--minor`, `--patch`, or `--build` to increment
+   the chosen component and sync the Cargo workspace and npm package versions.
+2. Add a new section at the top of this file.
+
+If you edit `VERSION` manually, run `node scripts/sync-version.mjs` afterward to sync the Cargo
+workspace and npm package versions.
 
 ## [1.1.3.1] - 2026-11-02
 
